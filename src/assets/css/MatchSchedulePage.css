@@ -1,0 +1,87 @@
+.schedule-card {
+    background-color: #1a1a1a;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .match-date {
+    font-size: 0.875rem;
+    color: #ffffff;
+  }
+  
+
+  .vs-text {
+    font-size: 1rem;
+    font-weight: bold;
+  }
+  
+  .team-name {
+    font-size: 0.875rem;
+    color: #ffffff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .live-badge {
+    font-size: 0.75rem;
+  }
+  
+  .live-badge .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: red;
+    border-radius: 50%;
+    margin-right: 5px;
+    animation: blink 1s infinite;
+  }
+  
+  @keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  
+  .skeleton {
+    background: #333;
+    border-radius: 4px;
+    animation: pulse 1.5s infinite;
+  }
+  
+  .skeleton-text {
+    height: 14px;
+    width: 60%;
+    margin: 0 auto;
+  }
+  
+  .skeleton-logo {
+    height: 40px;
+    width: 40px;
+  }
+  
+  @keyframes pulse {
+    0% { background: #333; }
+    50% { background: #444; }
+    100% { background: #333; }
+  }
+  
+  .category-tab {
+    padding: 10px 20px;
+    margin-right: 10px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  
+  .category-tab.active {
+    border-bottom: 2px solid #007bff;
+    color: #007bff;
+  }
+  .team-logo {
+    width: 40px; /* Kích thước cố định */
+    height: 40px;
+    max-width: 40px; /* Giới hạn kích thước tối đa */
+    max-height: 40px;
+    object-fit: contain; /* Giữ tỷ lệ hình ảnh */
+    display: block; /* Đảm bảo hình ảnh không bị ảnh hưởng bởi padding/margin */
+  }

@@ -1,0 +1,41 @@
+/* UserProfile.css */
+.user-profile-container {
+    min-height: 100vh;
+    background-color: #f8f9fa;
+  }
+  
+  .user-avatar {
+    object-fit: cover;
+    border: 3px solid #007bff;
+  }
+  
+  .form-control-custom {
+    border: 1px solid #ced4da;
+    padding: 10px 20px;
+    font-size: 1rem;
+  }
+  
+  .form-control-custom:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+  }
+  
+  .form-control-custom:disabled {
+    background-color: #e9ecef;
+  }
+  
+  .btn-custom {
+    padding: 12px;
+    font-size: 1.1rem;
+    background-color: #007bff;
+    border: none;
+  }
+  
+  .btn-custom:hover {
+    background-color: #0056b3;
+  }
+  
+  .modal-title {
+    font-weight: 600;
+    color: #343a40;
+  }

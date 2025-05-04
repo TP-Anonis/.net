@@ -1,0 +1,39 @@
+.comment-card .comment-text {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+.comment-card .d-flex.align-items-start {
+  align-items: flex-start;
+}
+
+.comment-avatar {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.comment-username {
+  font-weight: 600;
+}
+
+.comment-date {
+  font-size: 0.85rem;
+}
+
+.comment-actions {
+  margin-top: 0.5rem;
+}
+
+.reply-form {
+  margin-left: 56px;
+}
+
+.replies .reply-card {
+  margin-left: 56px;
+}
+
+.reply-avatar {
+  width: 32px;
+  height: 32px;
+}

@@ -1,0 +1,52 @@
+/* Login.css */
+.login-modal {
+    max-width: 800px !important; /* Giới hạn chiều rộng modal */
+  }
+  
+  .login-left-section {
+    background: linear-gradient(135deg, #007bff, #00d4ff); /* Gradient xanh */
+    border-top-left-radius: 10px;
+    border-bottom-left-radius: 10px;
+  }
+  
+  .login-right-section {
+    background-color: #f8f9fa; /* Màu nền nhạt */
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
+  }
+  
+  .login-logo {
+    max-width: 80%; /* Logo responsive */
+  }
+  
+  .form-control-custom {
+    border: 1px solid #ced4da;
+    padding: 10px 20px;
+    font-size: 1rem;
+  }
+  
+  .form-control-custom:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+  }
+  
+  .btn-custom {
+    padding: 12px;
+    font-size: 1.1rem;
+    background-color: #007bff;
+    border: none;
+  }
+  
+  .btn-custom:hover {
+    background-color: #0056b3;
+  }
+  
+  .link-text {
+    font-size: 0.9rem;
+    color: #6c757d;
+  }
+  
+  .modal-title {
+    font-weight: 600;
+    color: #343a40;
+  }

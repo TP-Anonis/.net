@@ -1,21 +1,21 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Form, Button, Card, Alert, Image, Modal } from 'react-bootstrap';
+import { Container, Row, Col, Form, Button, Card, Alert, Modal } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { requestResetPassword, resetPassword } from '../services/authApi';
-// Sử dụng import đúng cho jwt-decode (không dùng default)
-import { jwtDecode } from 'jwt-decode'; // Cập nhật cách nhập
+import { jwtDecode } from 'jwt-decode';
 import '../assets/css/UserProfile.css';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
 const API_URL_PROFILE = 'http://localhost:8000/auth/api/v1/User/profile';
+const API_URL_USERS = 'http://localhost:8000/auth/api/v1/User';
 
 const UserProfile = () => {
   const navigate = useNavigate();
 
-  // Khởi tạo các state để quản lý thông tin người dùng và trạng thái giao diện
+  // Khởi tạo state
   const [user, setUser] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -25,15 +25,13 @@ const UserProfile = () => {
     email: '',
     sex: '',
     birthday: '',
-    avatar: '',
-  }); // Chỉ giữ các trường API cung cấp
+  });
   const [passwordData, setPasswordData] = useState({
     email: '',
     otp: '',
     newPassword: '',
     confirmPassword: '',
   });
-  const [previewImage, setPreviewImage] = useState('');
   const [error, setError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,21 +40,18 @@ const UserProfile = () => {
   // Lấy token từ localStorage
   const token = localStorage.getItem('token') || '';
 
-  // Hàm giải mã token để lấy userAccountId
-  const getUserAccountIdFromToken = () => {
+  // Hàm giải mã token để lấy email
+  const getEmailFromToken = () => {
     try {
       const decoded = jwtDecode(token);
-      return decoded.userAccountId || '11111111-1111-1111-1111-111111111111'; // Fallback là ID của Admin
+      return decoded.email || 'tanphuoc058@gmail.com'; // Fallback mặc định
     } catch (e) {
       console.error('Lỗi giải mã token:', e);
-      return '11111111-1111-1111-1111-111111111111'; // Fallback mặc định
+      return 'tanphuoc058@gmail.com'; // Fallback mặc định
     }
   };
 
-  // Lấy userAccountId từ token
-  const userAccountId = getUserAccountIdFromToken();
-
-  // Kiểm tra token có tồn tại hay không
+  // Kiểm tra token
   const checkToken = () => {
     if (!token) {
       setError('Token xác thực không tồn tại. Vui lòng đăng nhập lại.');
@@ -67,23 +62,50 @@ const UserProfile = () => {
     return true;
   };
 
-  // Gọi API để lấy thông tin người dùng khi component được mount
+  // Fetch dữ liệu người dùng
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (!checkToken()) return;
 
       setLoading(true);
       try {
-        console.log('Gọi API với userAccountId:', userAccountId);
-        const response = await axios.get(`${API_URL_PROFILE}?accountId=${userAccountId}`, {
+        // Bước 1: Lấy danh sách người dùng
+        const userListResponse = await axios.get(API_URL_USERS, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
 
-        console.log('Phản hồi hồ sơ người dùng:', response.data);
+        console.log('Danh sách người dùng:', userListResponse.data);
 
-        const userData = response.data;
+        const users = userListResponse.data.data || [];
+        if (!users.length) {
+          throw new Error('Không tìm thấy danh sách người dùng.');
+        }
+
+        // Lấy email từ token
+        const currentUserEmail = getEmailFromToken();
+        console.log('Email từ token:', currentUserEmail);
+
+        // Tìm người dùng hiện tại
+        const currentUser = users.find((u) => u.email === currentUserEmail);
+        if (!currentUser) {
+          throw new Error('Không tìm thấy người dùng hiện tại trong danh sách.');
+        }
+
+        const userAccountId = currentUser.id;
+        console.log('userAccountId:', userAccountId);
+
+        // Bước 2: Lấy thông tin cá nhân
+        const profileResponse = await axios.get(`${API_URL_PROFILE}?accountId=${userAccountId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        console.log('Phản hồi hồ sơ người dùng:', profileResponse.data);
+
+        const userData = profileResponse.data;
         if (!userData) {
           throw new Error('API không trả về dữ liệu người dùng.');
         }
@@ -94,10 +116,8 @@ const UserProfile = () => {
           email: userData.email || '',
           sex: userData.sex || '',
           birthday: userData.birthday ? userData.birthday.split('T')[0] : '',
-          avatar: userData.avatar || '',
-        }); // Chỉ sử dụng các trường API cung cấp
-        setPreviewImage(userData.avatar || '');
-        setPasswordData({ ...passwordData, email: userData.email || '' });
+        });
+        setPasswordData((prev) => ({ ...prev, email: userData.email || '' }));
       } catch (error) {
         const errorMessage = error.response?.data?.message || error.message || 'Lỗi không xác định';
         setError('Lấy thông tin người dùng thất bại: ' + errorMessage);
@@ -108,30 +128,21 @@ const UserProfile = () => {
     };
 
     fetchUserProfile();
-  }, [userAccountId]);
+  }, []);
 
-  // Xử lý thay đổi dữ liệu trong form thông tin người dùng
+  // Xử lý thay đổi form thông tin
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Xử lý khi người dùng chọn file ảnh đại diện
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setFormData({ ...formData, avatar: file });
-      setPreviewImage(URL.createObjectURL(file));
-    }
-  };
-
-  // Xử lý thay đổi dữ liệu trong form đổi mật khẩu
+  // Xử lý thay đổi form mật khẩu
   const handlePasswordChange = (e) => {
     const { name, value } = e.target;
-    setPasswordData({ ...passwordData, [name]: value });
+    setPasswordData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Xử lý khi submit form thông tin người dùng
+  // Xử lý submit form thông tin
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.fullName) {
@@ -144,13 +155,13 @@ const UserProfile = () => {
     }
   };
 
-  // Xử lý khi nhấn nút chỉnh sửa
+  // Xử lý chỉnh sửa
   const handleEditClick = (e) => {
     e.preventDefault();
     setIsEditing(true);
   };
 
-  // Đóng modal thông báo thành công
+  // Đóng modal thành công
   const handleCloseModal = () => {
     setShowSuccessModal(false);
   };
@@ -164,12 +175,12 @@ const UserProfile = () => {
   // Đóng modal đổi mật khẩu
   const handleClosePasswordModal = () => {
     setShowPasswordModal(false);
-    setPasswordData({ ...passwordData, otp: '', newPassword: '', confirmPassword: '' });
+    setPasswordData((prev) => ({ ...prev, otp: '', newPassword: '', confirmPassword: '' }));
     setPasswordError('');
     setPasswordStep(1);
   };
 
-  // Xử lý submit form đổi mật khẩu
+  // Xử lý submit đổi mật khẩu
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
     setPasswordError('');
@@ -207,7 +218,7 @@ const UserProfile = () => {
     }
   };
 
-  // Nếu đang tải, hiển thị thông báo
+  // Hiển thị khi đang tải
   if (loading) {
     return (
       <>
@@ -224,7 +235,7 @@ const UserProfile = () => {
     );
   }
 
-  // Nếu không có dữ liệu người dùng, hiển thị lỗi
+  // Hiển thị khi không có dữ liệu
   if (!user) {
     return (
       <>
@@ -241,7 +252,7 @@ const UserProfile = () => {
     );
   }
 
-  // Giao diện chính của trang hồ sơ người dùng
+  // Giao diện chính
   return (
     <>
       <Header />
@@ -251,13 +262,6 @@ const UserProfile = () => {
             <Card className="shadow-sm">
               <Card.Body className="p-5">
                 <div className="text-center mb-4">
-                  <Image
-                    src={previewImage}
-                    alt="Avatar"
-                    roundedCircle
-                    className="user-avatar mb-3"
-                    style={{ width: '100px', height: '100px' }}
-                  />
                   <h3 className="modal-title">{formData.fullName}</h3>
                 </div>
 
@@ -310,17 +314,6 @@ const UserProfile = () => {
                       name="birthday"
                       value={formData.birthday}
                       onChange={handleChange}
-                      className="form-control-custom rounded-pill"
-                      disabled={!isEditing}
-                    />
-                  </Form.Group>
-
-                  <Form.Group className="mb-4" controlId="formAvatar">
-                    <Form.Label className="form-label">Chọn ảnh đại diện</Form.Label>
-                    <Form.Control
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
                       className="form-control-custom rounded-pill"
                       disabled={!isEditing}
                     />

@@ -1,29 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Table, Button, Badge, Modal, Form, Alert, Tabs, Tab, Pagination, FormSelect, FormControl } from 'react-bootstrap';
-import { Link } from 'react-router-dom';
+import { Container, Table, Button, Modal, Form, Alert, Tabs, Tab, Pagination, FormSelect, FormControl } from 'react-bootstrap';
 import { Trash, PencilSquare } from 'react-bootstrap-icons';
 import Header from './Header';
 import Footer from './Footer';
-import { mockArticles } from '../data/mockData';
 import axios from 'axios';
 
 const API_URL_TOPIC = 'http://localhost:5288/api/v1/Topic';
 const API_URL_CATEGORY = 'http://localhost:5288/api/v1/Category';
 
 const ContentManagement = () => {
-  // Quản lý bài viết
-  const initialArticles = mockArticles.map(article => ({
-    ...article,
-    status: article.status || 'pending',
-    plagiarismScore: Math.random() * 100,
-    rejectionReason: '',
-  }));
-
-  const [articles, setArticles] = useState(initialArticles);
-  const [showModal, setShowModal] = useState(false);
-  const [selectedArticle, setSelectedArticle] = useState(null);
-  const [rejectionReason, setRejectionReason] = useState('');
-
   // Quản lý chủ đề
   const [topics, setTopics] = useState([]);
   const [showTopicModal, setShowTopicModal] = useState(false);
@@ -48,11 +33,11 @@ const ContentManagement = () => {
 
   // Phân trang và sắp xếp (cho chủ đề)
   const [topicPageNumber, setTopicPageNumber] = useState(1);
-  const [topicPageSize] = useState(100); // Giá trị mặc định nếu sử dụng phân trang
+  const [topicPageSize] = useState(100);
   const [topicTotalPages, setTopicTotalPages] = useState(1);
   const [topicSortByNameAsc, setTopicSortByNameAsc] = useState(false);
   const [topicSearchName, setTopicSearchName] = useState('');
-  const [usePagination, setUsePagination] = useState(false); // Bật/tắt phân trang
+  const [usePagination, setUsePagination] = useState(false);
 
   // Phân trang và sắp xếp (cho danh mục)
   const [categoryPageNumber, setCategoryPageNumber] = useState(1);
@@ -83,7 +68,6 @@ const ContentManagement = () => {
       if (!checkToken()) return;
 
       try {
-        // Chỉ gửi các params cần thiết
         const params = {};
         if (usePagination) {
           params.pageNumber = topicPageNumber;
@@ -109,7 +93,6 @@ const ContentManagement = () => {
         setTopics(fetchedTopics);
         setTopicTotalPages(response.data.data.totalPages || 1);
 
-        // Log danh sách chủ đề để kiểm tra
         console.log('Danh sách chủ đề lấy từ API:', fetchedTopics);
       } catch (error) {
         const errorMessage = error.response?.data?.message || error.message || 'Lỗi không xác định';
@@ -168,38 +151,6 @@ const ContentManagement = () => {
     }
   }, [success]);
 
-  // Hàm kiểm tra đạo văn (giả lập)
-  const checkPlagiarism = (article) => {
-    return article.plagiarismScore > 30;
-  };
-
-  // Xử lý thay đổi trạng thái bài viết
-  const handleChangeStatus = (id, newStatus) => {
-    setArticles(articles.map(article =>
-      article.id === id ? { ...article, status: newStatus, rejectionReason: '' } : article
-    ));
-  };
-
-  // Xử lý từ chối bài viết
-  const handleReject = (article) => {
-    setArticles(articles.map(a =>
-      a.id === article.id ? { ...a, status: 'rejected', rejectionReason } : a
-    ));
-    setShowModal(false);
-    setRejectionReason('');
-  };
-
-  // Xử lý xóa bài viết
-  const handleDelete = (id) => {
-    setArticles(articles.filter(article => article.id !== id));
-  };
-
-  // Mở modal để nhập lý do từ chối
-  const openRejectionModal = (article) => {
-    setSelectedArticle(article);
-    setShowModal(true);
-  };
-
   // Xử lý tạo chủ đề mới
   const handleCreateTopic = async () => {
     if (!newTopicName.trim()) {
@@ -231,7 +182,6 @@ const ContentManagement = () => {
       setShowTopicModal(false);
       setNewTopicName('');
 
-      // Log danh sách chủ đề sau khi tạo mới
       console.log('Danh sách chủ đề sau khi tạo:', fetchedTopics);
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message || 'Lỗi không xác định';
@@ -265,7 +215,6 @@ const ContentManagement = () => {
       setTopicTotalPages(response.data.data.totalPages || 1);
       setSuccess('Xóa chủ đề thành công!');
 
-      // Log danh sách chủ đề sau khi xóa
       console.log('Danh sách chủ đề sau khi xóa:', fetchedTopics);
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message || 'Lỗi không xác định';
@@ -317,7 +266,6 @@ const ContentManagement = () => {
       setEditTopicName('');
       setEditTopicId('');
 
-      // Log danh sách chủ đề sau khi cập nhật
       console.log('Danh sách chủ đề sau khi cập nhật:', fetchedTopics);
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message || 'Lỗi không xác định';
@@ -350,7 +298,6 @@ const ContentManagement = () => {
 
       console.log('Tạo danh mục thành công:', response.data);
 
-      // Tải lại danh sách danh mục sau khi tạo
       const fetchResponse = await axios.get(`${API_URL_CATEGORY}/filter`, {
         params: {
           pageNumber: categoryPageNumber,
@@ -399,7 +346,6 @@ const ContentManagement = () => {
 
       console.log('Xóa danh mục thành công, ID:', categoryIdToDelete);
 
-      // Tải lại danh sách danh mục sau khi xóa
       const response = await axios.get(`${API_URL_CATEGORY}/filter`, {
         params: {
           pageNumber: categoryPageNumber,
@@ -463,7 +409,6 @@ const ContentManagement = () => {
 
       console.log('Cập nhật danh mục thành công:', response.data);
 
-      // Tải lại danh sách danh mục sau khi chỉnh sửa
       const fetchResponse = await axios.get(`${API_URL_CATEGORY}/filter`, {
         params: {
           pageNumber: categoryPageNumber,
@@ -543,127 +488,7 @@ const ContentManagement = () => {
         {error && <Alert variant="danger">{error}</Alert>}
         {success && <Alert variant="success">{success}</Alert>}
 
-        <Tabs defaultActiveKey="articles" id="content-management-tabs" className="mb-3">
-          {/* Tab Quản lý bài viết */}
-          <Tab eventKey="articles" title="Quản lý bài viết">
-            <Table striped bordered hover responsive>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Tiêu đề</th>
-                  <th>Chủ đề</th>
-                  <th>Tác giả</th>
-                  <th>Trạng thái</th>
-                  <th>Đạo văn</th>
-                  <th>Hành động</th>
-                </tr>
-              </thead>
-              <tbody>
-                {articles.map((article, index) => (
-                  <tr key={article.id}>
-                    <td>{index + 1}</td>
-                    <td>
-                      <Link to={`/news/${encodeURIComponent(article.title)}`} state={{ article }}>
-                        {article.title}
-                      </Link>
-                    </td>
-                    <td>{article.category}</td>
-                    <td>{article.authorId}</td>
-                    <td>
-                      <Badge
-                        bg={
-                          article.status === 'published' ? 'success' :
-                          article.status === 'pending' ? 'warning' :
-                          article.status === 'rejected' ? 'danger' : 'secondary'
-                        }
-                      >
-                        {article.status === 'published' ? 'Đã xuất bản' :
-                         article.status === 'pending' ? 'Đang chờ duyệt' :
-                         article.status === 'rejected' ? 'Bị từ chối' : 'Nháp'}
-                      </Badge>
-                      {article.status === 'rejected' && article.rejectionReason && (
-                        <div className="mt-1 text-danger">
-                          Lý do: {article.rejectionReason}
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      {checkPlagiarism(article) ? (
-                        <Alert variant="danger" className="p-1 mb-0">
-                          Nghi vấn đạo văn ({Math.round(article.plagiarismScore)}%)
-                        </Alert>
-                      ) : (
-                        <Alert variant="success" className="p-1 mb-0">
-                          Không có nghi vấn ({Math.round(article.plagiarismScore)}%)
-                        </Alert>
-                      )}
-                    </td>
-                    <td>
-                      {article.status === 'pending' && (
-                        <>
-                          <Button
-                            variant="outline-success"
-                            size="sm"
-                            className="me-2"
-                            onClick={() => handleChangeStatus(article.id, 'published')}
-                            disabled={checkPlagiarism(article)}
-                          >
-                            Duyệt
-                          </Button>
-                          <Button
-                            variant="outline-danger"
-                            size="sm"
-                            className="me-2"
-                            onClick={() => openRejectionModal(article)}
-                          >
-                            Từ chối
-                          </Button>
-                        </>
-                      )}
-                      {article.status === 'published' && (
-                        <Button
-                          variant="outline-warning"
-                          size="sm"
-                          className="me-2"
-                          onClick={() => handleChangeStatus(article.id, 'draft')}
-                        >
-                          Chuyển thành nháp
-                        </Button>
-                      )}
-                      {article.status === 'draft' && (
-                        <Button
-                          variant="outline-primary"
-                          size="sm"
-                          className="me-2"
-                          onClick={() => handleChangeStatus(article.id, 'pending')}
-                        >
-                          Gửi duyệt
-                        </Button>
-                      )}
-                      {article.status === 'rejected' && (
-                        <Button
-                          variant="outline-primary"
-                          size="sm"
-                          className="me-2"
-                          onClick={() => handleChangeStatus(article.id, 'pending')}
-                        >
-                          Gửi lại duyệt
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline-danger"
-                        size="sm"
-                        onClick={() => handleDelete(article.id)}
-                      >
-                        Xóa
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          </Tab>
-
+        <Tabs defaultActiveKey="topics" id="content-management-tabs" className="mb-3">
           {/* Tab Quản lý chủ đề */}
           <Tab eventKey="topics" title="Quản lý chủ đề">
             <div className="d-flex justify-content-between mb-3">
@@ -815,39 +640,6 @@ const ContentManagement = () => {
           </Tab>
         </Tabs>
       </Container>
-
-      {/* Modal để nhập lý do từ chối bài viết */}
-      <Modal show={showModal} onHide={() => setShowModal(false)}>
-        <Modal.Header closeButton>
-          <Modal.Title>Từ chối bài viết</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Form>
-            <Form.Group className="mb-3">
-              <Form.Label>Lý do từ chối</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={3}
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder="Nhập lý do từ chối (ví dụ: nghi vấn đạo văn, nội dung không phù hợp...)"
-              />
-            </Form.Group>
-          </Form>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowModal(false)}>
-            Hủy
-          </Button>
-          <Button
-            variant="danger"
-            onClick={() => handleReject(selectedArticle)}
-            disabled={!rejectionReason.trim()}
-          >
-            Xác nhận từ chối
-          </Button>
-        </Modal.Footer>
-      </Modal>
 
       {/* Modal để tạo chủ đề mới */}
       <Modal show={showTopicModal} onHide={() => setShowTopicModal(false)}>

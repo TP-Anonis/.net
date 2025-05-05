@@ -26,42 +26,40 @@ const Login = ({ show = false, handleClose }) => {
     const { name, value } = e.target;
     setResetData({ ...resetData, [name]: value });
   };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.email || !formData.password) {
       setError('Vui lòng nhập đầy đủ thông tin!');
       return;
     }
-  
+
     try {
       const response = await loginUser(formData.email, formData.password);
-      console.log('Login response:', response); // Debug phản hồi API
-      const { token } = response; // Đảm bảo response có cấu trúc { token: '...' }
-  
+      const { token } = response;
+
       const decodedToken = jwtDecode(token);
-      console.log('Decoded token:', decodedToken); // Debug để kiểm tra cấu trúc token
-  
-      // Giả định userAccountId là jti hoặc sub, tùy thuộc vào cấu trúc token
-      const userAccountId = decodedToken.jti || decodedToken.sub || decodedToken.id; // Điều chỉnh theo token thực tế
-      if (!userAccountId) {
-        throw new Error('Không tìm thấy userAccountId trong token!');
+      console.log('Decoded Token:', decodedToken);
+      const email = decodedToken.unique_name || formData.email;
+      const userAccountId = decodedToken.jti || decodedToken.sub || "default-id";
+      const role = decodedToken.role || decodedToken['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'];
+
+      if (userAccountId !== localStorage.getItem('userAccountId')) {
+        localStorage.setItem('userAccountId', userAccountId);
       }
-  
+
       const userData = {
         id: userAccountId,
-        username: decodedToken.unique_name,
-        roleId: decodedToken.role === 'Admin' ? 3 : decodedToken.role === 'Editor' ? 2 : 1,
+        username: decodedToken.unique_name || formData.email,
+        roleId: role === 'Admin' ? 3 : role === 'Editor' ? 2 : 1,
         createdAt: new Date(decodedToken.iat * 1000).toISOString(),
         status: 'active',
       };
-  
+
       localStorage.setItem('token', token);
-      localStorage.setItem('userAccountId', userAccountId); // Lưu userAccountId
-      console.log('Token saved:', localStorage.getItem('token')); // Debug
-      console.log('userAccountId saved:', localStorage.getItem('userAccountId')); // Debug
       setError('');
       alert('Đăng nhập thành công!');
-      login(userData); // Cập nhật context
+      login(userData);
       handleClose();
     } catch (err) {
       setError(err.message || 'Tài khoản hoặc mật khẩu không đúng!');

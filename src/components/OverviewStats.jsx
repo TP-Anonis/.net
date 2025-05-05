@@ -20,6 +20,8 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
 
 const OverviewStats = () => {
   const [timeFilter, setTimeFilter] = useState('daily');
+  const [startDate, setStartDate] = useState('2025-01-01');
+  const [endDate, setEndDate] = useState('2025-12-31');
   const [pageViews, setPageViews] = useState({ daily: [], monthly: [], yearly: [] });
   const [userReadingFreq, setUserReadingFreq] = useState(null);
   const [allUsersReadingFreq, setAllUsersReadingFreq] = useState([]);
@@ -51,8 +53,8 @@ const OverviewStats = () => {
         const pageVisitResponse = await axios.get(`${baseUrl}/page-visit-stats`, {
           headers,
           params: {
-            startDate: '2025-03-06T05:43:39.187Z',
-            endDate: '2025-04-20T05:43:39.187Z',
+            startDate: startDate,
+            endDate: endDate,
             pageNumber: 1,
             pageSize: 10,
           },
@@ -63,12 +65,15 @@ const OverviewStats = () => {
         }
         const pageVisitData = pageVisitResponse.data;
 
+        // Xử lý dữ liệu ngày, tháng, năm
         const dailyData = Object.entries(pageVisitData.dailyStats || {})
           .map(([date, views]) => ({ date, views }))
           .sort((a, b) => new Date(a.date) - new Date(b.date));
+
         const monthlyData = Object.entries(pageVisitData.monthlyStats || {})
-          .map(([month, views]) => ({ date: `Tháng ${month}`, views }))
-          .sort((a, b) => parseInt(a.date.split(' ')[1]) - parseInt(b.date.split(' ')[1]));
+          .map(([month, views]) => ({ date: month, views }))
+          .sort((a, b) => parseInt(a.date) - parseInt(b.date));
+
         const yearlyData = Object.entries(pageVisitData.yearlyStats || {})
           .map(([year, views]) => ({ date: year, views }))
           .sort((a, b) => parseInt(a.date) - parseInt(b.date));
@@ -81,26 +86,21 @@ const OverviewStats = () => {
           `${baseUrl}/reading-freq-user-stats/${userId}`,
           { headers }
         );
-        console.log('User Reading Freq Response:', userReadingResponse.data);
-        // Xử lý dữ liệu: Lấy phần tử đầu tiên nếu là mảng, hoặc sử dụng trực tiếp nếu là đối tượng
         const userReadingData = Array.isArray(userReadingResponse.data)
           ? userReadingResponse.data[0] || null
           : userReadingResponse.data || null;
         setUserReadingFreq(userReadingData);
-        console.log('Set userReadingFreq:', userReadingData);
 
         // Lấy tần suất đọc của tất cả người dùng
         const allUsersReadingResponse = await axios.get(`${baseUrl}/reading-freq-all-user-stats`, {
           headers,
         });
-        console.log('All Users Reading Freq Response:', allUsersReadingResponse.data);
         setAllUsersReadingFreq(allUsersReadingResponse.data.items || []);
 
         // Lấy danh sách người dùng
         const userListResponse = await axios.get(`http://localhost:8000/auth/api/v1/User`, {
           headers,
         });
-        console.log('User List Response:', userListResponse.data);
         setUsers(userListResponse.data.data || []);
       } catch (error) {
         console.error('Error fetching data:', error.response || error);
@@ -119,7 +119,7 @@ const OverviewStats = () => {
     };
 
     fetchData();
-  }, []);
+  }, [startDate, endDate]);
 
   // Dữ liệu biểu đồ lượt truy cập
   const pageViewsData = pageViews[timeFilter];
@@ -203,9 +203,6 @@ const OverviewStats = () => {
     return user ? user.email : userId || 'N/A';
   };
 
-  // Log để debug giá trị userReadingFreq trước khi render
-  console.log('Rendering userReadingFreq:', userReadingFreq);
-
   return (
     <div className="d-flex flex-column min-vh-100 bg-light">
       <Header />
@@ -247,7 +244,27 @@ const OverviewStats = () => {
                       </Card.Header>
                       <Card.Body>
                         <Row className="align-items-center mb-3">
-                          <Col md={6} className="mb-3 mb-md-0">
+                          <Col md={4} className="mb-3 mb-md-0">
+                            <Form.Group controlId="startDate">
+                              <Form.Label className="text-dark">Từ ngày</Form.Label>
+                              <Form.Control
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                              />
+                            </Form.Group>
+                          </Col>
+                          <Col md={4} className="mb-3 mb-md-0">
+                            <Form.Group controlId="endDate">
+                              <Form.Label className="text-dark">Đến ngày</Form.Label>
+                              <Form.Control
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                              />
+                            </Form.Group>
+                          </Col>
+                          <Col md={4} className="mb-3 mb-md-0">
                             <Form.Group>
                               <Form.Label className="text-dark">Chọn khoảng thời gian</Form.Label>
                               <Form.Select
@@ -261,13 +278,17 @@ const OverviewStats = () => {
                               </Form.Select>
                             </Form.Group>
                           </Col>
-                          <Col md={6} className="text-md-end">
-                            <div className="text-muted">
+                        </Row>
+                        {pageViewsData.length > 0 ? (
+                          <>
+                            <div className="text-muted mb-3 text-center">
                               Tổng lượt truy cập: <strong>{totalPageViews.toLocaleString()}</strong>
                             </div>
-                          </Col>
-                        </Row>
-                        <Line data={chartData} options={chartOptions} />
+                            <Line data={chartData} options={chartOptions} />
+                          </>
+                        ) : (
+                          <Alert variant="info">Không có dữ liệu lượt truy cập trong khoảng thời gian này.</Alert>
+                        )}
                       </Card.Body>
                     </Card>
                   </Tab.Pane>
@@ -282,7 +303,6 @@ const OverviewStats = () => {
                         {userReadingFreq ? (
                           <div className="bg-light p-3 rounded">
                             <p className="text-dark mb-0">
-                              <strong>ID:</strong> {userReadingFreq.id || 'N/A'}<br />
                               <strong>Người dùng:</strong> {getUserName(userReadingFreq.userId)}<br />
                               <strong>Ngày tạo:</strong> {formatDate(userReadingFreq.createAt) || 'N/A'}<br />
                               <strong>Lượt đọc:</strong> {userReadingFreq.readingCount || 'N/A'}
@@ -305,7 +325,6 @@ const OverviewStats = () => {
                         <Table striped bordered hover responsive>
                           <thead>
                             <tr>
-                              <th>ID</th>
                               <th>Người dùng</th>
                               <th>Ngày tạo</th>
                               <th>Lượt đọc</th>
@@ -315,7 +334,6 @@ const OverviewStats = () => {
                             {allUsersReadingFreq.length > 0 ? (
                               allUsersReadingFreq.map((item) => (
                                 <tr key={item.id}>
-                                  <td>{item.id || 'N/A'}</td>
                                   <td>{getUserName(item.userId)}</td>
                                   <td>{formatDate(item.createAt) || 'N/A'}</td>
                                   <td>{item.readingCount || 'N/A'}</td>
@@ -323,7 +341,7 @@ const OverviewStats = () => {
                               ))
                             ) : (
                               <tr>
-                                <td colSpan="4" className="text-center">
+                                <td colSpan="3" className="text-center">
                                   Không có dữ liệu tần suất đọc.
                                 </td>
                               </tr>

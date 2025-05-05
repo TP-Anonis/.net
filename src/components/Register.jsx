@@ -10,7 +10,7 @@ const Register = ({ show = false, handleClose, handleBack }) => {
     confirmPassword: '',
     fullName: '',
     sex: 'Female',
-    role: 'viewer', // Mặc định là viewer
+    role: 'viewer',
     birthday: '',
   });
   const [error, setError] = useState('');

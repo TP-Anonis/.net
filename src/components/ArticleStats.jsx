@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Table, Pagination, Card, Row, Col } from 'react-bootstrap';
+import { Container, Table, Pagination, Card, Row, Col, Tabs, Tab, Form, Button, Alert } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import Header from './Header';
 import Footer from './Footer';
 import { FaEye, FaComment } from 'react-icons/fa';
 
-// CSS tùy chỉnh (giữ nguyên)
+// CSS tùy chỉnh (giữ nguyên và mở rộng để hỗ trợ form lọc thời gian)
 const styles = `
   .article-stats-table {
     table-layout: fixed;
@@ -124,84 +124,148 @@ const styles = `
     font-weight: bold;
     color: #007bff;
   }
+  .date-filter-form {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .date-filter-form label {
+    font-weight: 500;
+    color: #333;
+  }
 `;
 
 const ArticleStats = () => {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [articles, setArticles] = useState([]);
+  const [activeTab, setActiveTab] = useState('articleViewStats');
+  const [articleViewStats, setArticleViewStats] = useState([]);
+  const [articleCommentStats, setArticleCommentStats] = useState([]);
+  const [userPostStats, setUserPostStats] = useState([]);
   const [totalArticles, setTotalArticles] = useState(0);
   const [totalViews, setTotalViews] = useState(0);
   const [totalComments, setTotalComments] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const [totalUserPosts, setTotalUserPosts] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // State cho phân trang và lọc thời gian
+  const [tabStates, setTabStates] = useState({
+    articleViewStats: { currentPage: 1, totalPages: 1, startDate: '2024-01-01', endDate: '2025-12-31' },
+    articleCommentStats: { currentPage: 1, totalPages: 1, startDate: '2024-01-01', endDate: '2025-12-31' },
+    userPostStats: { currentPage: 1, totalPages: 1, startDate: '2024-01-01', endDate: '2025-12-31' },
+  });
+
   const baseUrl = 'http://localhost:8000/article/api/v1/Statistic';
   const pageSize = 15;
 
-  // Lấy dữ liệu từ API
+  // Lấy dữ liệu từ API dựa trên tab
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
+      setError('');
       try {
-        // 1. Lấy thống kê bài viết và lượt xem
-        const viewStatsResponse = await axios.get(`${baseUrl}/article-view-stats`, {
-          params: {
-            pageNumber: currentPage,
-            pageSize: pageSize,
-          },
-        });
+        const { startDate, endDate, currentPage } = tabStates[activeTab];
+        let response;
+        switch (activeTab) {
+          case 'articleViewStats':
+            response = await axios.get(`${baseUrl}/article-view-stats`, {
+              params: {
+                publishStartDate: startDate,
+                publishEndDate: endDate,
+                viewStartDate: startDate,
+                viewEndDate: endDate,
+                pageNumber: currentPage,
+                pageSize: pageSize,
+              },
+            });
+            const viewData = response.data.data;
+            setArticleViewStats(viewData.items || []);
+            setTotalViews(viewData.items.reduce((sum, item) => sum + (item.views || 0), 0));
+            setTotalArticles(viewData.totalCount || 0);
+            setTabStates((prev) => ({
+              ...prev,
+              articleViewStats: { ...prev.articleViewStats, totalPages: viewData.totalPages || 1 },
+            }));
+            break;
 
-        const viewStatsData = viewStatsResponse.data.data;
-        const articlesWithViews = viewStatsData.items || [];
+          case 'articleCommentStats':
+            response = await axios.get(`${baseUrl}/article-comment-stats`, {
+              params: {
+                publishStartDate: startDate,
+                publishEndDate: endDate,
+                commentStartDate: startDate,
+                commentEndDate: endDate,
+                pageNumber: currentPage,
+                pageSize: pageSize,
+              },
+            });
+            const commentData = response.data.data;
+            setArticleCommentStats(commentData.items || []);
+            setTotalComments(commentData.items.reduce((sum, item) => sum + (item.comments?.length || 0), 0));
+            setTotalArticles(commentData.totalCount || 0);
+            setTabStates((prev) => ({
+              ...prev,
+              articleCommentStats: { ...prev.articleCommentStats, totalPages: commentData.totalPages || 1 },
+            }));
+            break;
 
-        // 2. Lấy số lượng bình luận cho từng bài viết
-        const commentStatsResponse = await axios.get(`${baseUrl}/article-comment-stats`, {
-          params: {
-            pageNumber: currentPage,
-            pageSize: pageSize,
-          },
-        });
+          case 'userPostStats':
+            response = await axios.get(`${baseUrl}/user-post-stats`, {
+              params: {
+                startDate: startDate,
+                endDate: endDate,
+                pageNumber: currentPage,
+                pageSize: pageSize,
+              },
+            });
+            const postData = response.data.data;
+            setUserPostStats(postData.items || []);
+            setTotalUserPosts(postData.totalCount || 0);
+            setTabStates((prev) => ({
+              ...prev,
+              userPostStats: { ...prev.userPostStats, totalPages: postData.totalPages || 1 },
+            }));
+            break;
 
-        const commentStatsData = commentStatsResponse.data.data;
-        const articlesWithComments = commentStatsData.items || [];
-
-        // 3. Kết hợp dữ liệu lượt xem và bình luận
-        const mergedArticles = articlesWithViews.map((article, index) => ({
-          ...article,
-          comments: articlesWithComments[index]?.comments || [],
-        }));
-
-        // 4. Cập nhật state
-        setArticles(mergedArticles);
-        setTotalPages(viewStatsData.totalPages || 1);
-        setTotalArticles(viewStatsData.totalCount || 0);
-
-        // Tính tổng lượt xem và bình luận
-        const views = articlesWithViews.reduce((sum, article) => sum + (article.views || 0), 0);
-        const comments = articlesWithComments.reduce(
-          (sum, article) => sum + (article.comments?.length || 0),
-          0
-        );
-        setTotalViews(views);
-        setTotalComments(comments);
+          default:
+            break;
+        }
       } catch (error) {
-        console.error('Error fetching stats:', error);
+        setError(`Lỗi khi lấy dữ liệu: ${error.response?.data?.message || error.message}`);
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [currentPage]);
+  }, [activeTab, tabStates[activeTab].currentPage, tabStates[activeTab].startDate, tabStates[activeTab].endDate]);
+
+  // Xử lý thay đổi thời gian
+  const handleDateChange = (field, value) => {
+    setTabStates((prev) => ({
+      ...prev,
+      [activeTab]: { ...prev[activeTab], [field]: value, currentPage: 1 },
+    }));
+  };
+
+  // Xử lý thay đổi trang
+  const handlePageChange = (page) => {
+    setTabStates((prev) => ({
+      ...prev,
+      [activeTab]: { ...prev[activeTab], currentPage: page },
+    }));
+  };
 
   // Tạo các nút phân trang
   const renderPagination = () => {
+    const { currentPage, totalPages } = tabStates[activeTab];
     const items = [];
     for (let number = 1; number <= totalPages; number++) {
       items.push(
         <Pagination.Item
           key={number}
           active={number === currentPage}
-          onClick={() => setCurrentPage(number)}
+          onClick={() => handlePageChange(number)}
         >
           {number}
         </Pagination.Item>
@@ -211,104 +275,276 @@ const ArticleStats = () => {
     return (
       <Pagination className="justify-content-center mt-3">
         <Pagination.Prev
-          onClick={() => setCurrentPage(currentPage > 1 ? currentPage - 1 : 1)}
+          onClick={() => handlePageChange(currentPage > 1 ? currentPage - 1 : 1)}
           disabled={currentPage === 1}
         />
         {items}
         <Pagination.Next
-          onClick={() => setCurrentPage(currentPage < totalPages ? currentPage + 1 : totalPages)}
+          onClick={() => handlePageChange(currentPage < totalPages ? currentPage + 1 : totalPages)}
           disabled={currentPage === totalPages}
         />
       </Pagination>
     );
   };
 
+  // Render bảng dữ liệu dựa trên tab
+  const renderTable = () => {
+    let data = [];
+    let totalItems = 0;
+    const { currentPage } = tabStates[activeTab];
+
+    switch (activeTab) {
+      case 'articleViewStats':
+        data = articleViewStats;
+        totalItems = totalArticles;
+        if (data.length === 0) {
+          return <Alert variant="info">Không có dữ liệu lượt xem trong khoảng thời gian này.</Alert>;
+        }
+        return (
+          <Table striped bordered hover responsive className="article-stats-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Tiêu đề</th>
+                <th>Chủ đề</th>
+                <th>Tác giả</th>
+                <th>Ngày xuất bản</th>
+                <th>Lượt Tương tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((article, index) => (
+                <tr key={article.id}>
+                  <td>{(currentPage - 1) * pageSize + index + 1}</td>
+                  <td className="title-column">
+                    <Link to={`/news/${encodeURIComponent(article.title)}`} state={{ article }}>
+                      {article.title}
+                    </Link>
+                  </td>
+                  <td>{article.category}</td>
+                  <td>{article.authorId}</td>
+                  <td>{new Date(article.publishedAt).toLocaleDateString('vi-VN')}</td>
+                  <td className="interaction-column">
+                    <span className="views">
+                      <FaEye /> {article.views || 0}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        );
+
+      case 'articleCommentStats':
+        data = articleCommentStats;
+        totalItems = totalArticles;
+        if (data.length === 0) {
+          return <Alert variant="info">Không có dữ liệu bình luận trong khoảng thời gian này.</Alert>;
+        }
+        return (
+          <Table striped bordered hover responsive className="article-stats-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Tiêu đề</th>
+                <th>Chủ đề</th>
+                <th>Tác giả</th>
+                <th>Ngày xuất bản</th>
+                <th>Lượt Tương tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((article, index) => (
+                <tr key={article.id}>
+                  <td>{(currentPage - 1) * pageSize + index + 1}</td>
+                  <td className="title-column">
+                    <Link to={`/news/${encodeURIComponent(article.title)}`} state={{ article }}>
+                      {article.title}
+                    </Link>
+                  </td>
+                  <td>{article.category}</td>
+                  <td>{article.authorId}</td>
+                  <td>{new Date(article.publishedAt).toLocaleDateString('vi-VN')}</td>
+                  <td className="interaction-column">
+                    <span className="comments">
+                      <FaComment /> {article.comments?.length || 0}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        );
+
+      case 'userPostStats':
+        data = userPostStats;
+        totalItems = totalUserPosts;
+        if (data.length === 0) {
+          return <Alert variant="info">Không có dữ liệu bài viết người dùng trong khoảng thời gian này.</Alert>;
+        }
+        return (
+          <Table striped bordered hover responsive className="article-stats-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Tên người dùng</th>
+                <th>Số bài viết</th>
+                <th>Ngày cập nhật</th>
+                <th>Trạng thái</th>
+                <th>Chi tiết</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((user, index) => (
+                <tr key={user.id}>
+                  <td>{(currentPage - 1) * pageSize + index + 1}</td>
+                  <td>{user.userName || 'N/A'}</td>
+                  <td>{user.postCount || 0}</td>
+                  <td>{new Date(user.lastUpdated).toLocaleDateString('vi-VN')}</td>
+                  <td>{user.status || 'Active'}</td>
+                  <td>
+                    <Link to={`/user/${user.id}`} className="btn btn-primary btn-sm">
+                      Xem
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  // Render tổng quan dựa trên tab
+  const renderOverview = () => {
+    switch (activeTab) {
+      case 'articleViewStats':
+        return (
+          <Row className="mb-4">
+            <Col md={4}>
+              <Card className="overview-card">
+                <Card.Body>
+                  <div>
+                    <Card.Title>Tổng số bài viết</Card.Title>
+                    <Card.Text>{totalArticles}</Card.Text>
+                  </div>
+                </Card.Body>
+              </Card>
+            </Col>
+            <Col md={4}>
+              <Card className="overview-card">
+                <Card.Body>
+                  <div>
+                    <Card.Title>Tổng lượt xem</Card.Title>
+                    <Card.Text>{totalViews}</Card.Text>
+                  </div>
+                </Card.Body>
+              </Card>
+            </Col>
+            <Col md={4}>
+              <Card className="overview-card">
+                <Card.Body>
+                  <div>
+                    <Card.Title>Tổng bình luận</Card.Title>
+                    <Card.Text>{totalComments}</Card.Text>
+                  </div>
+                </Card.Body>
+              </Card>
+            </Col>
+          </Row>
+        );
+      case 'articleCommentStats':
+        return (
+          <Row className="mb-4">
+            <Col md={4}>
+              <Card className="overview-card">
+                <Card.Body>
+                  <div>
+                    <Card.Title>Tổng số bài viết</Card.Title>
+                    <Card.Text>{totalArticles}</Card.Text>
+                  </div>
+                </Card.Body>
+              </Card>
+            </Col>
+            <Col md={4}>
+              <Card className="overview-card">
+                <Card.Body>
+                  <div>
+                    <Card.Title>Tổng bình luận</Card.Title>
+                    <Card.Text>{totalComments}</Card.Text>
+                  </div>
+                </Card.Body>
+              </Card>
+            </Col>
+          </Row>
+        );
+      case 'userPostStats':
+        return (
+          <Row className="mb-4">
+            <Col md={4}>
+              <Card className="overview-card">
+                <Card.Body>
+                  <div>
+                    <Card.Title>Tổng số người dùng</Card.Title>
+                    <Card.Text>{totalUserPosts}</Card.Text>
+                  </div>
+                </Card.Body>
+              </Card>
+            </Col>
+          </Row>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="d-flex flex-column min-vh-100">
-      {/* Thêm CSS tùy chỉnh */}
       <style>{styles}</style>
-
       <Header />
       <Container className="my-5 flex-grow-1">
         <h2 className="mb-4 text-center" style={{ color: '#333', fontWeight: 'bold' }}>
-          Thống kê bài báo
+          Thống kê
         </h2>
 
-        {/* Tổng quan */}
-        <Row className="mb-4">
-          <Col md={4}>
-            <Card className="overview-card">
-              <Card.Body>
-                <div>
-                  <Card.Title>Tổng số bài viết</Card.Title>
-                  <Card.Text>{totalArticles}</Card.Text>
-                </div>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col md={4}>
-            <Card className="overview-card">
-              <Card.Body>
-                <div>
-                  <Card.Title>Tổng lượt xem</Card.Title>
-                  <Card.Text>{totalViews}</Card.Text>
-                </div>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col md={4}>
-            <Card className="overview-card">
-              <Card.Body>
-                <div>
-                  <Card.Title>Tổng bình luận</Card.Title>
-                  <Card.Text>{totalComments}</Card.Text>
-                </div>
-              </Card.Body>
-            </Card>
-          </Col>
-        </Row>
+        <Tabs activeKey={activeTab} onSelect={(k) => setActiveTab(k)} className="mb-4">
+          <Tab eventKey="articleViewStats" title="Thống kê lượt xem" />
+          <Tab eventKey="articleCommentStats" title="Thống kê bình luận" />
+          <Tab eventKey="userPostStats" title="Thống kê bài viết người dùng" />
+        </Tabs>
 
-        {/* Bảng thống kê */}
+        <div className="date-filter-form">
+          <Form.Group controlId="startDate">
+            <Form.Label>Từ ngày</Form.Label>
+            <Form.Control
+              type="date"
+              value={tabStates[activeTab].startDate}
+              onChange={(e) => handleDateChange('startDate', e.target.value)}
+            />
+          </Form.Group>
+          <Form.Group controlId="endDate">
+            <Form.Label>Đến ngày</Form.Label>
+            <Form.Control
+              type="date"
+              value={tabStates[activeTab].endDate}
+              onChange={(e) => handleDateChange('endDate', e.target.value)}
+            />
+          </Form.Group>
+        </div>
+
+        {error && <Alert variant="danger">{error}</Alert>}
+
+        {renderOverview()}
+
         {loading ? (
           <div className="text-center">Đang tải dữ liệu...</div>
         ) : (
           <>
-            <Table striped bordered hover responsive className="article-stats-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Tiêu đề</th>
-                  <th>Chủ đề</th>
-                  <th>Tác giả</th>
-                  <th>Ngày xuất bản</th>
-                  <th>Lượt Tương tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {articles.map((article, index) => (
-                  <tr key={article.id}>
-                    <td>{(currentPage - 1) * pageSize + index + 1}</td>
-                    <td className="title-column">
-                      <Link to={`/news/${encodeURIComponent(article.title)}`} state={{ article }}>
-                        {article.title}
-                      </Link>
-                    </td>
-                    <td>{article.category}</td>
-                    <td>{article.authorId}</td>
-                    <td>{new Date(article.publishedAt).toLocaleDateString('vi-VN')}</td>
-                    <td className="interaction-column">
-                      <span className="views">
-                        <FaEye /> {article.views || 0}
-                      </span>
-                      <span className="comments">
-                        <FaComment /> {article.comments?.length || 0}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-            {renderPagination()}
+            {renderTable()}
+            {tabStates[activeTab].totalPages > 1 && renderPagination()}
           </>
         )}
       </Container>

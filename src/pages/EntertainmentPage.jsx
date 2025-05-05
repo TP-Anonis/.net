@@ -7,8 +7,9 @@ import Footer from '../components/Footer';
 import ErrorBoundary from '../components/ErrorBoundary';
 import '../assets/css/EntertainmentPage.css';
 
-const API_URL_ARTICLE_FILTER = 'http://localhost:8000/article/api/v1/Article/filter';
-const API_URL_CATEGORY_FILTER = 'http://localhost:8000/article/api/v1/Category/filter';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_URL_ARTICLE_FILTER = `${API_BASE_URL}/article/api/v1/Article/filter`;
+const API_URL_CATEGORY_FILTER = `${API_BASE_URL}/article/api/v1/Category/filter`;
 
 const EntertainmentPage = () => {
   const navigate = useNavigate();
@@ -18,24 +19,20 @@ const EntertainmentPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const topicId = 'efc0c6d6-dab2-423f-9d34-a45d241411c8'; // topicId cho "Giải trí"
+  const topicId = '3b837e5d-7259-4fb0-a538-f87aaf6a388e'; // topicId cho "Giải trí"
   const token = localStorage.getItem('token') || '';
 
   const fetchCategories = async () => {
-    if (!token) {
-      setError('Token xác thực không tồn tại. Vui lòng đăng nhập lại.');
-      return;
-    }
-
     try {
+      setLoading(true);
+      // Bỏ qua kiểm tra token, gọi API với hoặc không có token
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
       const response = await axios.get(API_URL_CATEGORY_FILTER, {
         params: {
           pageNumber: 1,
-          pageSize: 15, // Lấy hết 15 danh mục
+          pageSize: 15,
         },
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        ...config,
       });
 
       console.log('Phản hồi danh mục:', response.data);
@@ -58,17 +55,20 @@ const EntertainmentPage = () => {
       }
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message || 'Lỗi không xác định';
-      setError('Lấy danh sách danh mục thất bại: ' + errorMessage);
-      console.error('Lỗi khi lấy danh mục:', error.response?.data || error.message);
+      if (error.response?.status === 404) {
+        console.error('Endpoint không tồn tại hoặc server không hoạt động. Vui lòng kiểm tra URL API: ' + API_URL_CATEGORY_FILTER);
+      } else if (error.response?.status === 401 || error.response?.status === 403) {
+        console.log('Không thể lấy danh sách danh mục: Người dùng chưa đăng nhập hoặc token không hợp lệ.');
+      } else {
+        console.error('Lỗi khi lấy danh mục:', error.response?.data || error.message);
+      }
+      // Không hiển thị lỗi trên UI, chỉ log để debug
+    } finally {
+      setLoading(false);
     }
   };
 
   const fetchArticles = async () => {
-    if (!token) {
-      setError('Token xác thực không tồn tại. Vui lòng đăng nhập lại.');
-      return;
-    }
-
     setLoading(true);
     try {
       const selectedCategory = categories.find((cat) => cat.name === activeTab);
@@ -78,18 +78,19 @@ const EntertainmentPage = () => {
         return;
       }
 
+      // Bỏ qua kiểm tra token, gọi API với hoặc không có token
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
       const response = await axios.get(API_URL_ARTICLE_FILTER, {
         params: {
           pageNumber: 1,
           pageSize: 10,
           topicId: topicId,
           categoryId: selectedCategory.categoryId,
-          sortBy: 'createAt',
+          status: 'PUBLISHED',
+          sortBy: 'publishedat',
           sortOrder: 'desc',
         },
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        ...config,
       });
 
       console.log('Phản hồi bài viết:', response.data);
@@ -110,21 +111,27 @@ const EntertainmentPage = () => {
       setArticles(formattedArticles);
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message || 'Lỗi không xác định';
-      setError('Lấy danh sách bài viết thất bại: ' + errorMessage);
-      console.error('Lỗi khi lấy bài viết:', error.response?.data || error.message);
+      if (error.response?.status === 404) {
+        console.error('Endpoint không tồn tại hoặc server không hoạt động. Vui lòng kiểm tra URL API: ' + API_URL_ARTICLE_FILTER);
+      } else if (error.response?.status === 401 || error.response?.status === 403) {
+        console.log('Không thể lấy danh sách bài viết: Người dùng chưa đăng nhập hoặc token không hợp lệ.');
+      } else {
+        console.error('Lỗi khi lấy bài viết:', error.response?.data || error.message);
+      }
+      // Không hiển thị lỗi trên UI, chỉ log để debug
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCategories(); // Gọi lần đầu khi component mount
+    fetchCategories();
 
     const interval = setInterval(() => {
-      fetchCategories(); // Gọi lại mỗi 30 giây để kiểm tra danh mục mới
-    }, 30000); // 30 giây
+      fetchCategories();
+    }, 30000);
 
-    return () => clearInterval(interval); // Dọn dẹp interval khi component unmount
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -134,7 +141,14 @@ const EntertainmentPage = () => {
   }, [activeTab, categories]);
 
   const handleViewDetail = (article) => {
-    navigate(`/giai-tri/${article.id}`, { state: { article } });
+    navigate(`/news/${article.id}`);
+  };
+
+  const getAbsoluteThumbnailUrl = (thumbnail) => {
+    if (!thumbnail) return 'https://placehold.co/400x300?text=Image+Not+Found';
+    return thumbnail.startsWith('/article/uploads/')
+      ? `${API_BASE_URL}${thumbnail}`
+      : `${API_BASE_URL}/article/uploads/${thumbnail}`;
   };
 
   return (
@@ -160,13 +174,6 @@ const EntertainmentPage = () => {
             </Row>
           </div>
 
-          {error && (
-            <Row>
-              <Col>
-                <p className="text-center text-danger">{error}</p>
-              </Col>
-            </Row>
-          )}
           {loading && (
             <Row>
               <Col>
@@ -175,7 +182,7 @@ const EntertainmentPage = () => {
             </Row>
           )}
 
-          {!loading && !error && articles.length > 0 ? (
+          {!loading && articles.length > 0 ? (
             <Row className="mb-5">
               <Col md={6}>
                 <Card
@@ -184,7 +191,7 @@ const EntertainmentPage = () => {
                 >
                   <Card.Img
                     variant="top"
-                    src={articles[0].image}
+                    src={getAbsoluteThumbnailUrl(articles[0].image)}
                     style={{ height: '400px', objectFit: 'cover' }}
                     onError={(e) => {
                       e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found';
@@ -213,7 +220,7 @@ const EntertainmentPage = () => {
                       <Col md={4}>
                         <Card.Img
                           variant="top"
-                          src={article.image}
+                          src={getAbsoluteThumbnailUrl(article.image)}
                           style={{ height: '100px', objectFit: 'cover' }}
                           onError={(e) => {
                             e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found';
@@ -235,8 +242,7 @@ const EntertainmentPage = () => {
               </Col>
             </Row>
           ) : (
-            !loading &&
-            !error && (
+            !loading && (
               <Row>
                 <Col>
                   <p className="text-center text-muted">Không có bài viết nào trong danh mục này.</p>
@@ -245,7 +251,7 @@ const EntertainmentPage = () => {
             )
           )}
 
-          {!loading && !error && articles.length > 3 && (
+          {!loading && articles.length > 3 && (
             <Row>
               {articles.slice(3).map((article, index) => (
                 <Col md={4} key={index} className="mb-4">
@@ -255,7 +261,7 @@ const EntertainmentPage = () => {
                   >
                     <Card.Img
                       variant="top"
-                      src={article.image}
+                      src={getAbsoluteThumbnailUrl(article.image)}
                       style={{ height: '180px', objectFit: 'cover' }}
                       onError={(e) => {
                         e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found';

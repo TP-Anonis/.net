@@ -7,9 +7,10 @@ import Footer from '../components/Footer';
 import ErrorBoundary from '../components/ErrorBoundary';
 import '../assets/css/HomePage.css';
 
-const API_URL_TOPIC_FILTER = 'http://localhost:5288/api/v1/Topic/filter';
-const API_URL_ARTICLE_FILTER = 'http://localhost:8000/article/api/v1/Article/filter';
-const API_URL_CATEGORY_FILTER = 'http://localhost:8000/article/api/v1/Category/filter';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_URL_TOPIC_FILTER = `${API_BASE_URL}/article/api/v1/Topic/filter`;
+const API_URL_ARTICLE_FILTER = `${API_BASE_URL}/article/api/v1/Article/filter`;
+const API_URL_CATEGORY_FILTER = `${API_BASE_URL}/article/api/v1/Category/filter`;
 
 const FeaturedNews = ({ articles, onViewDetail }) => {
   if (!articles || articles.length === 0) {
@@ -26,7 +27,7 @@ const FeaturedNews = ({ articles, onViewDetail }) => {
           <Card className="border-0 main-article position-relative" onClick={() => onViewDetail(mainArticle)}>
             <Card.Img
               variant="top"
-              src={mainArticle.image}
+              src={getAbsoluteThumbnailUrl(mainArticle.image)}
               style={{ height: '400px', objectFit: 'cover' }}
               onError={(e) => {
                 e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found';
@@ -50,7 +51,7 @@ const FeaturedNews = ({ articles, onViewDetail }) => {
                 <Col md={4}>
                   <Card.Img
                     variant="top"
-                    src={article.image}
+                    src={getAbsoluteThumbnailUrl(article.image)}
                     style={{ height: '100px', objectFit: 'cover' }}
                     onError={(e) => {
                       e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found';
@@ -87,7 +88,7 @@ const NewsCategory = ({ category, articles, onViewDetail }) => (
             <Card className="border-0 news-card shadow-sm" onClick={() => onViewDetail(article)}>
               <Card.Img
                 variant="top"
-                src={article.image}
+                src={getAbsoluteThumbnailUrl(article.image)}
                 style={{ height: '180px', objectFit: 'cover' }}
                 onError={(e) => {
                   e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found';
@@ -109,6 +110,13 @@ const NewsCategory = ({ category, articles, onViewDetail }) => (
   </section>
 );
 
+const getAbsoluteThumbnailUrl = (thumbnail) => {
+  if (!thumbnail) return 'https://placehold.co/400x300?text=Image+Not+Found';
+  return thumbnail.startsWith('/article/uploads/')
+    ? `${API_BASE_URL}${thumbnail}`
+    : `${API_BASE_URL}/article/uploads/${thumbnail}`;
+};
+
 const HomePage = () => {
   const navigate = useNavigate();
   const [topics, setTopics] = useState([]);
@@ -121,21 +129,17 @@ const HomePage = () => {
   const token = localStorage.getItem('token') || '';
 
   const fetchTopics = async () => {
-    if (!token) {
-      setError('Token xác thực không tồn tại. Vui lòng đăng nhập lại.');
-      return;
-    }
-
     try {
+      setLoading(true);
+      // Bỏ qua kiểm tra token, gọi API với hoặc không có token
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
       const response = await axios.get(API_URL_TOPIC_FILTER, {
         params: {
           pageNumber: 1,
-          pageSize: 10,
+          pageSize: 5,
           sortByNameAsc: false,
         },
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        ...config,
       });
 
       console.log('Phản hồi chủ đề:', response.data);
@@ -144,26 +148,30 @@ const HomePage = () => {
       setTopics(topicData);
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message || 'Lỗi không xác định';
-      setError('Lấy danh sách chủ đề thất bại: ' + errorMessage);
-      console.error('Lỗi khi lấy chủ đề:', error.response?.data || error.message);
+      if (error.response?.status === 404) {
+        console.error(`Không tìm thấy endpoint. Vui lòng kiểm tra URL API: ${API_URL_TOPIC_FILTER}`);
+      } else if (error.response?.status === 401 || error.response?.status === 403) {
+        console.log('Không thể lấy danh sách chủ đề: Người dùng chưa đăng nhập hoặc token không hợp lệ.');
+      } else {
+        console.error('Lỗi khi lấy chủ đề:', error.response?.data || error.message);
+      }
+      // Không hiển thị lỗi hoặc chuyển hướng, chỉ log để debug
+    } finally {
+      setLoading(false);
     }
   };
 
   const fetchCategories = async () => {
-    if (!token) {
-      setError('Token xác thực không tồn tại. Vui lòng đăng nhập lại.');
-      return;
-    }
-
     try {
+      setLoading(true);
+      // Bỏ qua kiểm tra token, gọi API với hoặc không có token
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
       const response = await axios.get(API_URL_CATEGORY_FILTER, {
         params: {
           pageNumber: 1,
           pageSize: 20,
         },
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        ...config,
       });
 
       console.log('Phản hồi danh mục:', response.data);
@@ -184,17 +192,20 @@ const HomePage = () => {
       setCategories(categoriesByTopic);
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message || 'Lỗi không xác định';
-      setError('Lấy danh sách danh mục thất bại: ' + errorMessage);
-      console.error('Lỗi khi lấy danh mục:', error.response?.data || error.message);
+      if (error.response?.status === 404) {
+        console.error(`Không tìm thấy endpoint. Vui lòng kiểm tra URL API: ${API_URL_CATEGORY_FILTER}`);
+      } else if (error.response?.status === 401 || error.response?.status === 403) {
+        console.log('Không thể lấy danh sách danh mục: Người dùng chưa đăng nhập hoặc token không hợp lệ.');
+      } else {
+        console.error('Lỗi khi lấy danh mục:', error.response?.data || error.message);
+      }
+      // Không hiển thị lỗi hoặc chuyển hướng, chỉ log để debug
+    } finally {
+      setLoading(false);
     }
   };
 
   const fetchArticlesForCategories = async () => {
-    if (!token) {
-      setError('Token xác thực không tồn tại. Vui lòng đăng nhập lại.');
-      return;
-    }
-
     setLoading(true);
     try {
       const articlesByTopic = {};
@@ -205,18 +216,19 @@ const HomePage = () => {
         const topicArticles = [];
 
         for (const category of topicCategories) {
+          // Bỏ qua kiểm tra token, gọi API với hoặc không có token
+          const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
           const response = await axios.get(API_URL_ARTICLE_FILTER, {
             params: {
               pageNumber: 1,
               pageSize: 3,
               topicId: topic.id,
               categoryId: category.categoryId,
-              sortBy: 'createAt',
+              status: 'PUBLISHED',
+              sortBy: 'publishedat',
               sortOrder: 'desc',
             },
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
+            ...config,
           });
 
           const articleData = response.data?.data?.items || [];
@@ -247,8 +259,14 @@ const HomePage = () => {
       setFeaturedArticles(allFeaturedArticles);
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message || 'Lỗi không xác định';
-      setError('Lấy danh sách bài viết thất bại: ' + errorMessage);
-      console.error('Lỗi khi lấy bài viết:', error.response?.data || error.message);
+      if (error.response?.status === 404) {
+        console.error(`Không tìm thấy endpoint. Vui lòng kiểm tra URL API: ${API_URL_ARTICLE_FILTER}`);
+      } else if (error.response?.status === 401 || error.response?.status === 403) {
+        console.log('Không thể lấy danh sách bài viết: Người dùng chưa đăng nhập hoặc token không hợp lệ.');
+      } else {
+        console.error('Lỗi khi lấy bài viết:', error.response?.data || error.message);
+      }
+      // Không hiển thị lỗi hoặc chuyển hướng, chỉ log để debug
     } finally {
       setLoading(false);
     }
@@ -271,7 +289,7 @@ const HomePage = () => {
   }, [categories]);
 
   const handleViewDetail = (article) => {
-    navigate(`/news/${article.id}`, { state: { article, articleId: article.id } });
+    navigate(`/news/${article.id}`);
   };
 
   return (
@@ -281,13 +299,6 @@ const HomePage = () => {
         <Container className="my-5">
           <h2 className="mb-4">Trang Chủ</h2>
 
-          {error && (
-            <Row>
-              <Col>
-                <p className="text-center text-danger">{error}</p>
-              </Col>
-            </Row>
-          )}
           {loading && (
             <Row>
               <Col>
@@ -296,7 +307,7 @@ const HomePage = () => {
             </Row>
           )}
 
-          {!loading && !error && (
+          {!loading && (
             <>
               <FeaturedNews articles={featuredArticles} onViewDetail={handleViewDetail} />
               {topics.map((topic) => (

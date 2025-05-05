@@ -1,15 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Alert, Button } from 'react-bootstrap';
+import React, { useState, useEffect, useContext } from 'react';
+import { Container, Row, Col, Card, Alert, Button, Spinner } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import { AuthContext } from '../context/AuthContext';
 
-const API_URL_ARTICLE_STORAGE = 'http://localhost:8000/article/api/v1/ArticleStorage';
-const BACKEND_URL = 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_URL_ARTICLE_STORAGE = `${API_BASE_URL}/article/api/v1/ArticleStorage`;
+const API_URL_ARTICLE_DETAIL = `${API_BASE_URL}/article/api/v1/Article`;
 
 const SavedArticlesPage = () => {
   const navigate = useNavigate();
+  const { user, isLoggedIn } = useContext(AuthContext);
   const [savedArticles, setSavedArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -17,50 +20,40 @@ const SavedArticlesPage = () => {
 
   useEffect(() => {
     const fetchSavedArticles = async () => {
-      if (!token) {
-        setError('Token xác thực không tồn tại. Vui lòng đăng nhập lại.');
+      if (!isLoggedIn || !token) {
+        setError('Vui lòng đăng nhập để xem bài viết đã lưu.');
         setLoading(false);
-        navigate('/login');
         return;
       }
 
       try {
         setLoading(true);
-        console.log('Token hiện tại:', token);
-        const requestHeaders = {
-          Authorization: `Bearer ${token}`,
-          Accept: '*/*',
-          'Content-Type': 'application/json', // Thêm Content-Type để khớp với Postman
-        };
-        console.log('Request headers:', requestHeaders);
+        const response = await axios.get(API_URL_ARTICLE_STORAGE, {
+          headers: { Authorization: `Bearer ${token}`, Accept: '*/*' },
+          params: { pageNumber: 1, pageSize: 10 },
+        });
 
-        const response = await axios.get(
-          `${API_URL_ARTICLE_STORAGE}`,
-          {
-            headers: requestHeaders,
-            params: {
-              pageNumber: 1,
-              pageSize: 10,
-            },
-          }
-        );
-
-        console.log('Full response:', response.data);
-
-        if (response.data && response.data.statusCode === 200) {
+        if (response.data.statusCode === 200) {
           const items = response.data.data.items || [];
-          console.log('Items từ API:', items);
           if (items.length > 0) {
-            setSavedArticles(
-              items.map((item) => ({
-                id: item.article.id,
-                title: item.article.title,
-                thumbnail: item.article.thumbnail || '',
-                createAt: item.article.createAt,
-                category: item.article.categoryId || 'Không có danh mục',
-                userAccountEmail: 'Không xác định',
-              }))
+            const articlesWithDetails = await Promise.all(
+              items.map(async (item) => {
+                const articleDetailResponse = await axios.get(`${API_URL_ARTICLE_DETAIL}/${item.article.id}`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                const articleDetail = articleDetailResponse.data.data;
+                return {
+                  id: item.article.id,
+                  title: item.article.title || 'Tiêu đề không có',
+                  thumbnail: item.article.thumbnail || '',
+                  createAt: item.article.createAt || new Date().toISOString(),
+                  categoryName: articleDetail.category?.name || 'Chưa phân loại',
+                  author: articleDetail.userDetails?.fullName || 'Chưa xác định',
+                  isSaved: true,
+                };
+              })
             );
+            setSavedArticles(articlesWithDetails);
           } else {
             setError('Không có bài viết nào trong danh sách.');
           }
@@ -70,13 +63,8 @@ const SavedArticlesPage = () => {
       } catch (error) {
         console.error('Lỗi khi gọi API:', error);
         if (error.response) {
-          console.log('Status:', error.response.status);
-          console.log('Data:', error.response.data);
-          if (error.response.status === 415) {
-            setError('Lỗi 415: Server yêu cầu Content-Type: application/json. Đã cập nhật header.');
-          } else if (error.response.status === 401) {
-            setError('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
-            navigate('/login');
+          if (error.response.status === 401) {
+            setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
           } else if (error.response.status === 403) {
             setError('Bạn không có quyền truy cập danh sách bài viết.');
           } else {
@@ -95,16 +83,11 @@ const SavedArticlesPage = () => {
     };
 
     fetchSavedArticles();
-  }, [token, navigate]);
-
-  const handleViewArticle = (article) => {
-    navigate(`/news/${article.id}`, { state: { article, articleId: article.id } });
-  };
+  }, [token, navigate, isLoggedIn]);
 
   const handleUnsaveArticle = async (articleId) => {
-    if (!token) {
-      setError('Token xác thực không tồn tại. Vui lòng đăng nhập lại.');
-      navigate('/login');
+    if (!isLoggedIn || !token) {
+      setError('Vui lòng đăng nhập để hủy lưu bài viết.');
       return;
     }
 
@@ -113,25 +96,23 @@ const SavedArticlesPage = () => {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: '*/*',
-          'Content-Type': 'application/json', // Thêm Content-Type cho DELETE
+          'Content-Type': 'application/json',
         },
       });
 
       if (response.data.statusCode === 200) {
         setSavedArticles(savedArticles.filter((article) => article.id !== articleId));
         setError('');
+      } else if (response.data.statusCode === 404) {
+        setError('Bài viết không tồn tại trong danh sách lưu trữ.');
       } else {
         setError('Hủy lưu bài viết thất bại: ' + (response.data.message || 'Lỗi không xác định'));
       }
     } catch (error) {
       console.error('Lỗi khi hủy lưu bài viết:', error.response || error.message);
       if (error.response) {
-        if (error.response.status === 404) {
-          setError('Bài viết không tồn tại trong danh sách lưu trữ.');
-          setSavedArticles(savedArticles.filter((article) => article.id !== articleId));
-        } else if (error.response.status === 401) {
-          setError('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
-          navigate('/login');
+        if (error.response.status === 401) {
+          setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
         } else {
           setError(
             `Hủy lưu bài viết thất bại (Mã ${error.response.status}): ${
@@ -145,10 +126,23 @@ const SavedArticlesPage = () => {
     }
   };
 
+  const handleViewArticle = (articleId) => {
+    navigate(`/news/${articleId}`);
+  };
+
   if (loading) {
     return (
-      <Container>
-        <h3 className="my-5 text-center">Đang tải...</h3>
+      <Container className="text-center my-5">
+        <Spinner animation="border" />
+        <p>Đang tải...</p>
+      </Container>
+    );
+  }
+
+  if (error) {
+    return (
+      <Container className="my-5">
+        <Alert variant="danger">{error}</Alert>
       </Container>
     );
   }
@@ -158,17 +152,16 @@ const SavedArticlesPage = () => {
       <Header />
       <Container className="my-5">
         <h2 className="mb-4">Bài viết đã lưu</h2>
-        {error && <Alert variant="danger">{error}</Alert>}
         {savedArticles.length === 0 ? (
           <p className="text-center text-muted">Bạn chưa lưu bài viết nào.</p>
         ) : (
           <Row>
             {savedArticles.map((article) => (
               <Col md={4} key={article.id} className="mb-4">
-                <Card onClick={() => handleViewArticle(article)} style={{ cursor: 'pointer' }}>
+                <Card onClick={() => handleViewArticle(article.id)} style={{ cursor: 'pointer' }}>
                   <Card.Img
                     variant="top"
-                    src={article.thumbnail ? `${BACKEND_URL}${article.thumbnail}` : 'https://placehold.co/400x300?text=Image+Not+Found'}
+                    src={article.thumbnail ? `${API_BASE_URL}${article.thumbnail}` : 'https://placehold.co/400x300?text=Image+Not+Found'}
                     alt={article.title}
                     style={{ height: '200px', objectFit: 'cover' }}
                     onError={(e) => { e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found'; }}
@@ -179,10 +172,10 @@ const SavedArticlesPage = () => {
                       Đăng ngày: {new Date(article.createAt).toLocaleString()}
                     </Card.Text>
                     <Card.Text className="text-muted">
-                      Danh mục: {article.category}
+                      <strong>Tên danh mục:</strong> {article.categoryName}
                     </Card.Text>
                     <Card.Text className="text-muted">
-                      Tác giả: {article.userAccountEmail}
+                      <strong>Tác giả:</strong> {article.author}
                     </Card.Text>
                     <Button
                       variant="outline-danger"

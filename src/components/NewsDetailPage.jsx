@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Container, Row, Col, Form, Button, Card, Dropdown, Alert } from 'react-bootstrap';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import { AuthContext } from '../context/AuthContext';
 import '../assets/css/NewsDetailPage.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -13,7 +14,6 @@ const API_URL_COMMENT = `${API_BASE_URL}/article/api/v1/Comment`;
 const API_URL_ARTICLE_STORAGE = `${API_BASE_URL}/article/api/v1/ArticleStorage`;
 const API_URL_USER_PROFILE = `${API_BASE_URL}/auth/api/v1/User/profile`;
 
-// Hàm lấy thông tin người dùng và lưu vào localStorage
 const fetchUserProfile = async (userAccountId, token) => {
   try {
     const storedUsers = JSON.parse(localStorage.getItem('userMapping')) || {};
@@ -21,17 +21,16 @@ const fetchUserProfile = async (userAccountId, token) => {
       return storedUsers[userAccountId];
     }
 
-    const response = await axios.get(`${API_URL_USER_PROFILE}?accountId=${userAccountId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+    const response = await axios.get(`${API_URL_USER_PROFILE}?accountId=${userAccountId}`, config);
 
     const userData = response.data;
     storedUsers[userAccountId] = userData.fullName;
     localStorage.setItem('userMapping', JSON.stringify(storedUsers));
     return userData.fullName;
   } catch (error) {
-    console.error('Lỗi khi lấy thông tin người dùng:', error);
-    return userAccountId; // Trả về userAccountId nếu lỗi
+    console.error('Lỗi khi lấy thông tin người dùng:', error.response?.data?.message || error.message);
+    return userAccountId;
   }
 };
 
@@ -47,6 +46,8 @@ const CommentSection = ({
   userMapping,
   sortBy,
   setSortBy,
+  userRole,
+  isLoggedIn,
 }) => {
   const [newComment, setNewComment] = useState('');
   const [replyText, setReplyText] = useState({});
@@ -56,6 +57,10 @@ const CommentSection = ({
 
   const handleCommentSubmit = async (e) => {
     e.preventDefault();
+    if (!isLoggedIn) {
+      console.log('Người dùng chưa đăng nhập, không thể gửi bình luận.');
+      return;
+    }
     if (newComment.trim()) {
       await onAddComment(newComment);
       setNewComment('');
@@ -64,6 +69,10 @@ const CommentSection = ({
 
   const handleReplySubmit = async (e, commentId) => {
     e.preventDefault();
+    if (!isLoggedIn) {
+      console.log('Người dùng chưa đăng nhập, không thể gửi câu trả lời.');
+      return;
+    }
     if (replyText[commentId]?.trim()) {
       await onAddReply(commentId, replyText[commentId]);
       setReplyText((prev) => ({ ...prev, [commentId]: '' }));
@@ -72,18 +81,27 @@ const CommentSection = ({
   };
 
   const toggleReplyForm = (commentId) => {
-    setShowReplyForm((prev) => ({
-      ...prev,
-      [commentId]: !prev[commentId],
-    }));
+    if (!isLoggedIn) {
+      console.log('Người dùng chưa đăng nhập, không thể mở form trả lời.');
+      return;
+    }
+    setShowReplyForm((prev) => ({ ...prev, [commentId]: !prev[commentId] }));
   };
 
   const handleEditComment = (commentId, text) => {
+    if (!isLoggedIn) {
+      console.log('Người dùng chưa đăng nhập, không thể chỉnh sửa bình luận.');
+      return;
+    }
     setEditCommentId(commentId);
     setEditCommentText(text);
   };
 
   const handleSaveEditComment = async (commentId) => {
+    if (!isLoggedIn) {
+      console.log('Người dùng chưa đăng nhập, không thể lưu chỉnh sửa bình luận.');
+      return;
+    }
     if (editCommentText.trim()) {
       await onEditComment(commentId, editCommentText);
       setEditCommentId(null);
@@ -97,27 +115,41 @@ const CommentSection = ({
   };
 
   const sortedComments = [...comments].sort((a, b) => {
-    return new Date(b.createdAt) - new Date(a.createdAt);
+    return sortBy === 'newest'
+      ? new Date(b.createdAt) - new Date(a.createdAt)
+      : new Date(a.createdAt) - new Date(b.createdAt);
   });
+
+  const canEditDeleteComment = (commentAuthor) => {
+    return userRole === 3 || commentAuthor === currentUser;
+  };
+
+  const canToggleVisibility = () => {
+    return userRole === 3;
+  };
 
   return (
     <div className="comment-section mt-5">
-      <h5 className="mb-3 comment-title">Chia sẻ ý kiến của bạn</h5>
-      <Form onSubmit={handleCommentSubmit}>
-        <Form.Group className="mb-3">
-          <Form.Control
-            as="textarea"
-            rows={3}
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Viết bình luận của bạn..."
-            className="comment-textarea"
-          />
-        </Form.Group>
-        <Button variant="primary" type="submit" className="comment-submit-btn">
-          Gửi bình luận
-        </Button>
-      </Form>
+      {isLoggedIn && (
+        <>
+          <h5 className="mb-3 comment-title">Chia sẻ ý kiến của bạn</h5>
+          <Form onSubmit={handleCommentSubmit}>
+            <Form.Group className="mb-3">
+              <Form.Control
+                as="textarea"
+                rows={3}
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Viết bình luận của bạn..."
+                className="comment-textarea"
+              />
+            </Form.Group>
+            <Button variant="primary" type="submit" className="comment-submit-btn">
+              Gửi bình luận
+            </Button>
+          </Form>
+        </>
+      )}
 
       <div className="mt-4">
         <div className="d-flex justify-content-between align-items-center mb-3">
@@ -132,7 +164,7 @@ const CommentSection = ({
                 <Dropdown.Item eventKey="oldest">Cũ nhất</Dropdown.Item>
               </Dropdown.Menu>
             </Dropdown>
-            {comments.length > 0 && (
+            {isLoggedIn && comments.length > 0 && userRole === 3 && (
               <Button variant="danger" size="sm" onClick={onDeleteAllComments}>
                 Xóa tất cả bình luận
               </Button>
@@ -140,7 +172,7 @@ const CommentSection = ({
           </div>
         </div>
         {comments.length === 0 ? (
-          <p className="text-muted">Chưa có bình luận nào. Hãy là người đầu tiên bình luận!</p>
+          <p className="text-muted">Chưa có bình luận nào. Hãy đăng nhập để bình luận!</p>
         ) : (
           sortedComments.map((comment) => (
             <Card key={comment.id} className="mb-3 comment-card">
@@ -150,6 +182,7 @@ const CommentSection = ({
                     src="https://placehold.co/40x40?text=User"
                     alt="User avatar"
                     className="rounded-circle me-3 comment-avatar"
+                    loading="lazy"
                   />
                   <div className="flex-grow-1">
                     <div className="d-flex justify-content-between align-items-center mb-1">
@@ -160,13 +193,14 @@ const CommentSection = ({
                         <span className="comment-date text-muted">
                           {new Date(comment.createdAt).toLocaleString()}
                         </span>
-                        {comment.author === currentUser && (
+                        {isLoggedIn && (canEditDeleteComment(comment.author) || userRole === 3) && (
                           <div className="ms-3">
                             <Button
                               variant="link"
                               className="text-primary p-0 me-2"
                               onClick={() => handleEditComment(comment.id, comment.text)}
                               title="Chỉnh sửa bình luận"
+                              disabled={!canEditDeleteComment(comment.author)}
                             >
                               <i className="bi bi-pencil"></i>
                             </Button>
@@ -175,22 +209,25 @@ const CommentSection = ({
                               className="text-danger p-0 me-2"
                               onClick={() => onDeleteComment(comment.id)}
                               title="Xóa bình luận"
+                              disabled={!canEditDeleteComment(comment.author)}
                             >
                               <i className="bi bi-trash"></i>
                             </Button>
-                            <Button
-                              variant="link"
-                              className="text-muted p-0"
-                              onClick={() => onToggleVisibility(comment.id)}
-                              title={comment.isHiden ? "Hiện bình luận" : "Ẩn bình luận"}
-                            >
-                              {comment.isHiden ? (
-                                <i className="bi bi-eye"></i>
-                              ) : (
-                                <i className="bi bi-eye-slash"></i>
-                              )}
-                            </Button>
                           </div>
+                        )}
+                        {isLoggedIn && canToggleVisibility() && (
+                          <Button
+                            variant="link"
+                            className="text-muted p-0"
+                            onClick={() => onToggleVisibility(comment.id)}
+                            title={comment.isHiden ? 'Hiện bình luận' : 'Ẩn bình luận'}
+                          >
+                            {comment.isHiden ? (
+                              <i className="bi bi-eye"></i>
+                            ) : (
+                              <i className="bi bi-eye-slash"></i>
+                            )}
+                          </Button>
                         )}
                       </div>
                     </div>
@@ -223,7 +260,7 @@ const CommentSection = ({
                         dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(comment.text) }}
                       />
                     )}
-                    {!comment.isHiden && (
+                    {!comment.isHiden && isLoggedIn && (
                       <div className="comment-actions">
                         <Button
                           variant="link"
@@ -235,7 +272,7 @@ const CommentSection = ({
                       </div>
                     )}
 
-                    {showReplyForm[comment.id] && !comment.isHiden && (
+                    {showReplyForm[comment.id] && !comment.isHiden && isLoggedIn && (
                       <Form onSubmit={(e) => handleReplySubmit(e, comment.id)} className="mt-3 reply-form">
                         <Form.Group className="mb-2">
                           <Form.Control
@@ -276,6 +313,7 @@ const CommentSection = ({
                                   src="https://placehold.co/32x32?text=User"
                                   alt="User avatar"
                                   className="rounded-circle me-2 reply-avatar"
+                                  loading="lazy"
                                 />
                                 <div>
                                   <span className="comment-username">{userMapping[reply.author] || reply.author}</span>
@@ -308,6 +346,7 @@ const NewsDetailPage = () => {
   const { id } = useParams();
   const { state } = useLocation();
   const navigate = useNavigate();
+  const { user, isLoggedIn } = useContext(AuthContext);
   const [article, setArticle] = useState(state?.article || null);
   const [loading, setLoading] = useState(!state?.article);
   const [error, setError] = useState('');
@@ -317,16 +356,24 @@ const NewsDetailPage = () => {
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
   const [userMapping, setUserMapping] = useState(JSON.parse(localStorage.getItem('userMapping')) || {});
-  const currentUser = '11111111-1111-1111-1111-111111111111';
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
   const token = localStorage.getItem('token') || '';
+  const userRole = user?.roleId || null;
+  const commentSectionRef = useRef(null);
 
-  // Lấy thông tin người dùng khi tải bình luận
+  const getAbsoluteThumbnailUrl = (thumbnail) => {
+    if (!thumbnail) return 'https://placehold.co/400x300?text=Image+Not+Found';
+    return thumbnail.startsWith('/article/uploads/')
+      ? `${API_BASE_URL}${thumbnail}`
+      : `${API_BASE_URL}/article/uploads/${thumbnail}`;
+  };
+
   useEffect(() => {
     const fetchUserNamesForComments = async () => {
-      if (!token || !comments.length) return;
+      if (!commentsLoaded || !comments.length) return;
 
       const updatedMapping = { ...userMapping };
-      const uniqueUserIds = [...new Set(comments.map(comment => comment.author))];
+      const uniqueUserIds = [...new Set(comments.map((comment) => comment.author))];
       for (const userId of uniqueUserIds) {
         if (!updatedMapping[userId]) {
           const fullName = await fetchUserProfile(userId, token);
@@ -334,10 +381,9 @@ const NewsDetailPage = () => {
         }
       }
 
-      // Cập nhật userMapping cho replies
       for (const comment of comments) {
         if (comment.replies && comment.replies.length > 0) {
-          const replyUserIds = [...new Set(comment.replies.map(reply => reply.author))];
+          const replyUserIds = [...new Set(comment.replies.map((reply) => reply.author))];
           for (const userId of replyUserIds) {
             if (!updatedMapping[userId]) {
               const fullName = await fetchUserProfile(userId, token);
@@ -352,12 +398,11 @@ const NewsDetailPage = () => {
     };
 
     fetchUserNamesForComments();
-  }, [comments, token]);
+  }, [comments, token, commentsLoaded]);
 
   useEffect(() => {
     const checkSaveStatus = async () => {
-      if (!token) {
-        setSaveError('Vui lòng đăng nhập để lưu bài viết.');
+      if (!isLoggedIn || !token) {
         return;
       }
 
@@ -369,58 +414,63 @@ const NewsDetailPage = () => {
 
         if (response.data.statusCode === 200) {
           setIsSaved(response.data.data);
-        } else {
-          setSaveError('Không thể kiểm tra trạng thái lưu bài viết.');
         }
       } catch (error) {
-        if (error.response?.status === 401) {
-          setSaveError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-        } else {
-          setSaveError('Lỗi khi kiểm tra trạng thái lưu: ' + (error.response?.data?.message || error.message));
-        }
+        console.error('Lỗi khi kiểm tra trạng thái lưu:', error.response?.data?.message || error.message);
       }
     };
 
     checkSaveStatus();
-  }, [id, token]);
+  }, [id, token, isLoggedIn]);
 
   useEffect(() => {
     const fetchArticleDetail = async () => {
-      if (!token) {
-        setError('Vui lòng đăng nhập để xem bài viết.');
+      // Kiểm tra cache
+      const cachedArticle = JSON.parse(localStorage.getItem(`article-${id}`));
+      if (cachedArticle && cachedArticle.id === id) {
+        setArticle(cachedArticle);
+        setLoading(false);
+        return;
+      }
+
+      // Sử dụng dữ liệu từ state nếu có
+      if (state?.article && state.article.id === id) {
+        setArticle(state.article);
+        localStorage.setItem(`article-${id}`, JSON.stringify(state.article));
         setLoading(false);
         return;
       }
 
       try {
         setLoading(true);
-        const response = await axios.get(`${API_URL_ARTICLE_DETAIL}/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+        const response = await axios.get(`${API_URL_ARTICLE_DETAIL}/${id}`, config);
 
         const articleData = response.data?.data;
         if (articleData) {
-          setArticle({
+          const formattedArticle = {
             id: articleData.id,
-            title: articleData.title,
-            thumbnail: articleData.thumbnail,
-            content: articleData.content,
-            createAt: articleData.createAt,
-            category: articleData.category?.name,
-            userAccountEmail: articleData.userAccountEmail,
+            title: articleData.title || 'Tiêu đề không có',
+            thumbnail: articleData.thumbnail || '',
+            content: articleData.content || '<p>Nội dung không có</p>',
+            createAt: articleData.createAt || new Date().toISOString(),
+            categoryName: articleData.category?.name || 'Chưa phân loại',
+            author: articleData.userDetails?.fullName || 'Chưa xác định',
+            userAccountEmail: articleData.userAccountEmail || user?.email || 'Chưa xác định',
             images: [],
             video: null,
-          });
+          };
+          setArticle(formattedArticle);
+          localStorage.setItem(`article-${id}`, JSON.stringify(formattedArticle));
         } else {
           setError('Không tìm thấy bài viết.');
         }
       } catch (error) {
-        if (error.response?.status === 401) {
-          setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-        } else if (error.response?.status === 404) {
+        if (error.response?.status === 404) {
           setError('Không tìm thấy bài viết.');
         } else {
-          setError('Lấy chi tiết bài viết thất bại: ' + (error.response?.data?.message || error.message));
+          console.error('Lỗi khi lấy chi tiết bài viết:', error.response?.data?.message || error.message);
+          setError('Không thể tải bài viết.');
         }
       } finally {
         setLoading(false);
@@ -428,48 +478,68 @@ const NewsDetailPage = () => {
     };
 
     fetchArticleDetail();
-  }, [id, token]);
+  }, [id, token, user?.email, state]);
 
   useEffect(() => {
-    const fetchComments = async () => {
-      if (!token || !article?.id) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !commentsLoaded) {
+          const fetchComments = async () => {
+            try {
+              const cachedComments = JSON.parse(localStorage.getItem(`comments-${id}`));
+              if (cachedComments) {
+                setComments(cachedComments);
+                setCommentsLoaded(true);
+                return;
+              }
 
-      try {
-        const response = await axios.get(`${API_URL_COMMENT}/article/${article.id}`, {
-          params: { pageNumber: 1, pageSize: 10, descending: true },
-          headers: { Authorization: `Bearer ${token}` },
-        });
+              const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+              const response = await axios.get(`${API_URL_COMMENT}/article/${id}`, {
+                params: { pageNumber: 1, pageSize: 10, descending: true },
+                ...config,
+              });
 
-        const commentData = response.data?.data?.items || [];
-        const savedReplies = JSON.parse(localStorage.getItem(`replies-${article.id}`)) || {};
+              const commentData = response.data?.data?.items || [];
+              const savedReplies = JSON.parse(localStorage.getItem(`replies-${id}`)) || {};
 
-        const formattedComments = commentData.map((comment) => ({
-          id: comment.id,
-          text: comment.content,
-          createdAt: comment.createdAt,
-          replies: savedReplies[comment.id] || [],
-          author: comment.userAccountId,
-          isHiden: comment.isHiden || false,
-        }));
+              const formattedComments = commentData.map((comment) => ({
+                id: comment.id,
+                text: comment.content,
+                createdAt: comment.createdAt,
+                replies: savedReplies[comment.id] || [],
+                author: comment.userAccountId,
+                isHiden: comment.isHiden || false,
+              }));
 
-        setComments(formattedComments);
-      } catch (error) {
-        if (error.response?.status === 401) {
-          setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-        } else if (error.response?.status === 404) {
-          setError('Không tìm thấy bình luận cho bài viết này.');
-        } else {
-          setError('Lỗi khi lấy danh sách bình luận: ' + (error.response?.data?.message || error.message));
+              setComments(formattedComments);
+              localStorage.setItem(`comments-${id}`, JSON.stringify(formattedComments));
+              setCommentsLoaded(true);
+            } catch (error) {
+              console.error('Lỗi khi lấy danh sách bình luận:', error.response?.data?.message || error.message);
+              setCommentsLoaded(true);
+            }
+          };
+
+          fetchComments();
         }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (commentSectionRef.current) {
+      observer.observe(commentSectionRef.current);
+    }
+
+    return () => {
+      if (commentSectionRef.current) {
+        observer.unobserve(commentSectionRef.current);
       }
     };
-
-    fetchComments();
-  }, [article, token]);
+  }, [id, token, commentsLoaded]);
 
   const handleSaveArticle = async () => {
-    if (!token) {
-      setSaveError('Vui lòng đăng nhập để lưu bài viết.');
+    if (!isLoggedIn || !token) {
+      console.log('Người dùng chưa đăng nhập, không thể lưu bài viết.');
       return;
     }
 
@@ -489,48 +559,40 @@ const NewsDetailPage = () => {
         setIsSaved(true);
         setSaveSuccess('Lưu bài viết thành công!');
         setTimeout(() => setSaveSuccess(''), 3000);
-      } else {
-        setSaveError('Lưu bài viết thất bại: ' + (response.data.message || 'Lỗi không xác định'));
       }
     } catch (error) {
-      if (error.response?.status === 401) {
-        setSaveError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-      } else {
-        setSaveError('Lưu bài viết thất bại: ' + (error.response?.data?.message || error.message));
-      }
+      console.error('Lỗi khi lưu bài viết:', error.response?.data?.message || error.message);
     }
   };
 
   const handleUnsaveArticle = async () => {
-    if (!token) {
-      setSaveError('Vui lòng đăng nhập để hủy lưu bài viết.');
+    if (!isLoggedIn || !token) {
+      console.log('Người dùng chưa đăng nhập, không thể hủy lưu bài viết.');
       return;
     }
 
     try {
       const response = await axios.delete(`${API_URL_ARTICLE_STORAGE}/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: '*/*',
+          'Content-Type': 'application/json',
+        },
       });
 
       if (response.data.statusCode === 200) {
         setIsSaved(false);
         setSaveSuccess('Hủy lưu bài viết thành công!');
         setTimeout(() => setSaveSuccess(''), 3000);
-      } else {
-        setSaveError('Hủy lưu bài viết thất bại: ' + (response.data.message || 'Lỗi không xác định'));
       }
     } catch (error) {
-      if (error.response?.status === 401) {
-        setSaveError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-      } else {
-        setSaveError('Hủy lưu bài viết thất bại: ' + (error.response?.data?.message || error.message));
-      }
+      console.error('Lỗi khi hủy lưu bài viết:', error.response?.data?.message || error.message);
     }
   };
 
   const handleAddComment = async (commentText) => {
-    if (!token) {
-      setError('Vui lòng đăng nhập để bình luận.');
+    if (!isLoggedIn || !token) {
+      console.log('Người dùng chưa đăng nhập, không thể thêm bình luận.');
       return;
     }
 
@@ -555,9 +617,12 @@ const NewsDetailPage = () => {
         isHiden: response.data.data.isHiden || false,
       };
 
-      setComments((prevComments) => [newComment, ...prevComments]);
+      setComments((prevComments) => {
+        const updatedComments = [newComment, ...prevComments];
+        localStorage.setItem(`comments-${id}`, JSON.stringify(updatedComments));
+        return updatedComments;
+      });
 
-      // Cập nhật userMapping cho người dùng mới
       const updatedMapping = { ...userMapping };
       if (!updatedMapping[newComment.author]) {
         updatedMapping[newComment.author] = await fetchUserProfile(newComment.author, token);
@@ -565,19 +630,13 @@ const NewsDetailPage = () => {
         localStorage.setItem('userMapping', JSON.stringify(updatedMapping));
       }
     } catch (error) {
-      if (error.response?.status === 401) {
-        setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-      } else if (error.response?.status === 400) {
-        setError('Nội dung bình luận không hợp lệ.');
-      } else {
-        setError('Lỗi khi thêm bình luận: ' + (error.response?.data?.message || error.message));
-      }
+      console.error('Lỗi khi thêm bình luận:', error.response?.data?.message || error.message);
     }
   };
 
   const handleEditComment = async (commentId, newText) => {
-    if (!token) {
-      setError('Vui lòng đăng nhập để chỉnh sửa bình luận.');
+    if (!isLoggedIn || !token) {
+      console.log('Người dùng chưa đăng nhập, không thể chỉnh sửa bình luận.');
       return;
     }
 
@@ -589,8 +648,8 @@ const NewsDetailPage = () => {
       );
 
       const updatedComment = response.data.data;
-      setComments((prevComments) =>
-        prevComments.map((comment) =>
+      setComments((prevComments) => {
+        const updatedComments = prevComments.map((comment) =>
           comment.id === commentId
             ? {
                 ...comment,
@@ -599,22 +658,18 @@ const NewsDetailPage = () => {
                 isHiden: updatedComment.isHiden,
               }
             : comment
-        )
-      );
+        );
+        localStorage.setItem(`comments-${id}`, JSON.stringify(updatedComments));
+        return updatedComments;
+      });
     } catch (error) {
-      if (error.response?.status === 401) {
-        setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-      } else if (error.response?.status === 403) {
-        setError('Bạn không có quyền chỉnh sửa bình luận này.');
-      } else {
-        setError('Lỗi khi chỉnh sửa bình luận: ' + (error.response?.data?.message || error.message));
-      }
+      console.error('Lỗi khi chỉnh sửa bình luận:', error.response?.data?.message || error.message);
     }
   };
 
   const handleDeleteComment = async (commentId) => {
-    if (!token) {
-      setError('Vui lòng đăng nhập để xóa bình luận.');
+    if (!isLoggedIn || !token) {
+      console.log('Người dùng chưa đăng nhập, không thể xóa bình luận.');
       return;
     }
 
@@ -623,59 +678,60 @@ const NewsDetailPage = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      setComments((prevComments) => prevComments.filter((comment) => comment.id !== commentId));
+      setComments((prevComments) => {
+        const updatedComments = prevComments.filter((comment) => comment.id !== commentId);
+        localStorage.setItem(`comments-${id}`, JSON.stringify(updatedComments));
+        return updatedComments;
+      });
 
-      const savedReplies = JSON.parse(localStorage.getItem(`replies-${article.id}`)) || {};
+      const savedReplies = JSON.parse(localStorage.getItem(`replies-${id}`)) || {};
       delete savedReplies[commentId];
-      localStorage.setItem(`replies-${article.id}`, JSON.stringify(savedReplies));
+      localStorage.setItem(`replies-${id}`, JSON.stringify(savedReplies));
     } catch (error) {
-      if (error.response?.status === 401) {
-        setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-      } else if (error.response?.status === 403) {
-        setError('Bạn không có quyền xóa bình luận này.');
-      } else {
-        setError('Lỗi khi xóa bình luận: ' + (error.response?.data?.message || error.message));
-      }
+      console.error('Lỗi khi xóa bình luận:', error.response?.data?.message || error.message);
     }
   };
 
   const handleAddReply = async (commentId, replyText) => {
+    if (!isLoggedIn || !token) {
+      console.log('Người dùng chưa đăng nhập, không thể trả lời bình luận.');
+      return;
+    }
+
     const newReply = {
       text: replyText,
       createdAt: new Date().toISOString(),
-      author: currentUser,
+      author: user?.id || '11111111-1111-1111-1111-111111111111',
     };
 
-    setComments((prevComments) =>
-      prevComments.map((comment) =>
+    setComments((prevComments) => {
+      const updatedComments = prevComments.map((comment) =>
         comment.id === commentId
           ? {
               ...comment,
               replies: [...(comment.replies || []), newReply],
             }
           : comment
-      )
-    );
+      );
+      localStorage.setItem(`comments-${id}`, JSON.stringify(updatedComments));
+      return updatedComments;
+    });
 
-    const savedReplies = JSON.parse(localStorage.getItem(`replies-${article.id}`)) || {};
-    savedReplies[commentId] = [
-      ...(savedReplies[commentId] || []),
-      newReply,
-    ];
-    localStorage.setItem(`replies-${article.id}`, JSON.stringify(savedReplies));
+    const savedReplies = JSON.parse(localStorage.getItem(`replies-${id}`)) || {};
+    savedReplies[commentId] = [...(savedReplies[commentId] || []), newReply];
+    localStorage.setItem(`replies-${id}`, JSON.stringify(savedReplies));
 
-    // Cập nhật userMapping cho người dùng của reply
     const updatedMapping = { ...userMapping };
-    if (!updatedMapping[currentUser]) {
-      updatedMapping[currentUser] = await fetchUserProfile(currentUser, token);
+    if (!updatedMapping[newReply.author]) {
+      updatedMapping[newReply.author] = await fetchUserProfile(newReply.author, token);
       setUserMapping(updatedMapping);
       localStorage.setItem('userMapping', JSON.stringify(updatedMapping));
     }
   };
 
   const handleToggleVisibility = async (commentId) => {
-    if (!token) {
-      setError('Vui lòng đăng nhập để ẩn/hiện bình luận.');
+    if (!isLoggedIn || !token) {
+      console.log('Người dùng chưa đăng nhập, không thể ẩn/hiện bình luận.');
       return;
     }
 
@@ -686,27 +742,23 @@ const NewsDetailPage = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      setComments((prevComments) =>
-        prevComments.map((comment) =>
+      setComments((prevComments) => {
+        const updatedComments = prevComments.map((comment) =>
           comment.id === commentId
             ? { ...comment, isHiden: response.data.data.isHiden }
             : comment
-        )
-      );
+        );
+        localStorage.setItem(`comments-${id}`, JSON.stringify(updatedComments));
+        return updatedComments;
+      });
     } catch (error) {
-      if (error.response?.status === 401) {
-        setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-      } else if (error.response?.status === 403) {
-        setError('Bạn không có quyền ẩn/hiện bình luận này.');
-      } else {
-        setError('Lỗi khi ẩn/hiện bình luận: ' + (error.response?.data?.message || error.message));
-      }
+      console.error('Lỗi khi ẩn/hiện bình luận:', error.response?.data?.message || error.message);
     }
   };
 
   const handleDeleteAllComments = async () => {
-    if (!token) {
-      setError('Vui lòng đăng nhập để xóa tất cả bình luận.');
+    if (!isLoggedIn || !token) {
+      console.log('Người dùng chưa đăng nhập, không thể xóa tất cả bình luận.');
       return;
     }
 
@@ -724,13 +776,10 @@ const NewsDetailPage = () => {
       );
 
       setComments([]);
-      localStorage.removeItem(`replies-${article.id}`);
+      localStorage.removeItem(`comments-${id}`);
+      localStorage.removeItem(`replies-${id}`);
     } catch (error) {
-      if (error.response?.status === 401) {
-        setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-      } else {
-        setError('Lỗi khi xóa tất cả bình luận: ' + (error.response?.data?.message || error.message));
-      }
+      console.error('Lỗi khi xóa tất cả bình luận:', error.response?.data?.message || error.message);
     }
   };
 
@@ -759,35 +808,39 @@ const NewsDetailPage = () => {
             <h1 className="mb-3">{article.title}</h1>
             <div className="article-meta mb-4">
               <span className="text-muted">
-                Đăng ngày: {new Date(article.createAt).toLocaleString()} | Tác giả: {article.userAccountEmail}
+                Đăng ngày: {new Date(article.createAt).toLocaleString()} | <strong>Tác giả:</strong> {article.author}
               </span>
             </div>
-            <div className="mb-4">
-              {saveError && <Alert variant="danger">{saveError}</Alert>}
-              {saveSuccess && <Alert variant="success">{saveSuccess}</Alert>}
-              <Button
-                variant={isSaved ? "outline-danger" : "outline-primary"}
-                onClick={isSaved ? handleUnsaveArticle : handleSaveArticle}
-              >
-                {isSaved ? (
-                  <>
-                    <i className="bi bi-bookmark-fill me-1"></i> Hủy lưu
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-bookmark me-1"></i> Lưu bài viết
-                  </>
-                )}
-              </Button>
-            </div>
+            {isLoggedIn && (
+              <div className="mb-4">
+                {saveError && <Alert variant="danger">{saveError}</Alert>}
+                {saveSuccess && <Alert variant="success">{saveSuccess}</Alert>}
+                <Button
+                  variant={isSaved ? 'outline-danger' : 'outline-primary'}
+                  onClick={isSaved ? handleUnsaveArticle : handleSaveArticle}
+                >
+                  {isSaved ? (
+                    <>
+                      <i className="bi bi-bookmark-fill me-1"></i> Hủy lưu
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-bookmark me-1"></i> Lưu bài viết
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+            <p><strong>Tên danh mục:</strong> {article.categoryName}</p>
             <img
-              src={article.thumbnail}
+              src={getAbsoluteThumbnailUrl(article.thumbnail)}
               alt={article.title}
               className="img-fluid mb-4"
               style={{ width: '100%', height: 'auto', maxHeight: '400px', objectFit: 'cover' }}
               onError={(e) => {
                 e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found';
               }}
+              loading="lazy"
             />
             <div className="article-content">
               <div
@@ -795,6 +848,19 @@ const NewsDetailPage = () => {
                 style={{ lineHeight: '1.8', fontSize: '16px', whiteSpace: 'pre-wrap' }}
                 dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(article.content) }}
               />
+              <style jsx>{`
+                .content-text img {
+                  max-width: 50% !important;
+                  max-height: 300px !important;
+                  width: auto !important;
+                  height: auto !important;
+                  object-fit: contain !important;
+                  display: block !important;
+                  margin: 10px auto !important;
+                  border-radius: 8px !important;
+                  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+                }
+              `}</style>
 
               {article.images && article.images.length > 0 && (
                 <div className="article-images mt-4">
@@ -810,6 +876,7 @@ const NewsDetailPage = () => {
                           onError={(e) => {
                             e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found';
                           }}
+                          loading="lazy"
                         />
                       </Col>
                     ))}
@@ -830,24 +897,29 @@ const NewsDetailPage = () => {
                       referrerPolicy="strict-origin-when-cross-origin"
                       allowFullScreen
                       style={{ width: '100%', height: '400px', borderRadius: '8px' }}
+                      loading="lazy"
                     ></iframe>
                   </div>
                 </div>
               )}
             </div>
-            <CommentSection
-              comments={comments}
-              onAddComment={handleAddComment}
-              onEditComment={handleEditComment}
-              onDeleteComment={handleDeleteComment}
-              onAddReply={handleAddReply}
-              onDeleteAllComments={handleDeleteAllComments}
-              onToggleVisibility={handleToggleVisibility}
-              currentUser={currentUser}
-              userMapping={userMapping}
-              sortBy={sortBy}
-              setSortBy={setSortBy}
-            />
+            <div ref={commentSectionRef}>
+              <CommentSection
+                comments={comments}
+                onAddComment={handleAddComment}
+                onEditComment={handleEditComment}
+                onDeleteComment={handleDeleteComment}
+                onAddReply={handleAddReply}
+                onDeleteAllComments={handleDeleteAllComments}
+                onToggleVisibility={handleToggleVisibility}
+                currentUser={user?.id || '11111111-1111-1111-1111-111111111111'}
+                userMapping={userMapping}
+                sortBy={sortBy}
+                setSortBy={setSortBy}
+                userRole={userRole}
+                isLoggedIn={isLoggedIn}
+              />
+            </div>
           </Col>
         </Row>
         <Button variant="secondary" className="mt-4" onClick={() => navigate(-1)}>

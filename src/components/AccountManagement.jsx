@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Tabs, Tab, Table, Button, Badge, Form, InputGroup, Pagination, Container, Modal, Alert, Spinner } from 'react-bootstrap';
+import { Tabs, Tab, Table, Button, Badge, Form, InputGroup, Pagination, Container, Modal, Alert, Spinner, Row, Col, Image } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
-import { sendVerificationEmail } from '../services/authApi';
+import { sendVerificationEmail, registerEditor, verifyCode } from '../services/authApi';
 import axios from 'axios';
 import Header from './Header';
 import Footer from './Footer';
+import '../assets/css/Login.css';
 
 const AccountManagement = () => {
   const navigate = useNavigate();
@@ -29,6 +30,22 @@ const AccountManagement = () => {
   const [selectedEditor, setSelectedEditor] = useState(null);
   const [verifyCodeInput, setVerifyCodeInput] = useState('');
   const [verifyError, setVerifyError] = useState('');
+
+  // State cho modal đăng ký biên tập viên
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [registerFormData, setRegisterFormData] = useState({
+    email: '',
+    password: '',
+    confirmPassword: '',
+    fullName: '',
+    sex: 'Female',
+    role: 'Editor',
+    birthday: '',
+  });
+  const [registerError, setRegisterError] = useState('');
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [registerVerifyCodeInput, setRegisterVerifyCodeInput] = useState('');
+  const [registerVerifyError, setRegisterVerifyError] = useState('');
 
   // Token từ localStorage
   const token = localStorage.getItem('token');
@@ -99,7 +116,6 @@ const AccountManagement = () => {
 
   // Xử lý khóa người dùng
   const handleLockUser = async (accountId) => {
-    // Kiểm tra token và accountId trước khi gửi yêu cầu
     if (!checkToken()) return;
     if (!accountId || typeof accountId !== 'string') {
       setError('ID tài khoản không hợp lệ. Vui lòng thử lại.');
@@ -111,10 +127,9 @@ const AccountManagement = () => {
     setSuccessMessage('');
 
     try {
-      console.log('Khóa tài khoản với accountId:', accountId);
       const response = await axios.patch(
-        `http://localhost:8000/auth/api/v1/User/lock`,
-        { accountId: accountId },
+        `http://localhost:8000/auth/api/v1/User/lock?accountId=${accountId}`,
+        {},
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -123,8 +138,6 @@ const AccountManagement = () => {
         }
       );
 
-      console.log('Phản hồi từ API khóa:', response.data);
-
       if (response.data.message !== 'Khóa tài khoản người dùng thành công') {
         throw new Error(response.data.message || 'Khóa tài khoản thất bại.');
       }
@@ -132,11 +145,9 @@ const AccountManagement = () => {
       setSuccessMessage('Khóa tài khoản người dùng thành công.');
       await fetchUsers();
     } catch (error) {
-      // Cải thiện xử lý lỗi để lấy thông tin chi tiết từ server
       const errorMessage = error.response?.data?.message || error.response?.statusText || error.message;
       const errorStatus = error.response?.status || 'N/A';
       setError(`Lỗi khi khóa tài khoản: ${errorStatus} - ${errorMessage}`);
-      console.error('Chi tiết lỗi khóa tài khoản:', error.response || error);
     } finally {
       setLoading(false);
     }
@@ -155,10 +166,9 @@ const AccountManagement = () => {
     setSuccessMessage('');
 
     try {
-      console.log('Mở khóa tài khoản với accountId:', accountId);
       const response = await axios.patch(
-        `http://localhost:8000/auth/api/v1/User/unlock`,
-        { accountId: accountId },
+        `http://localhost:8000/auth/api/v1/User/unlock?accountId=${accountId}`,
+        {},
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -166,8 +176,6 @@ const AccountManagement = () => {
           },
         }
       );
-
-      console.log('Phản hồi từ API mở khóa:', response.data);
 
       if (response.data.message !== 'Mở khóa tài khoản người dùng thành công') {
         throw new Error(response.data.message || 'Mở khóa tài khoản thất bại.');
@@ -179,7 +187,6 @@ const AccountManagement = () => {
       const errorMessage = error.response?.data?.message || error.response?.statusText || error.message;
       const errorStatus = error.response?.status || 'N/A';
       setError(`Lỗi khi mở khóa tài khoản: ${errorStatus} - ${errorMessage}`);
-      console.error('Chi tiết lỗi mở khóa tài khoản:', error.response || error);
     } finally {
       setLoading(false);
     }
@@ -252,6 +259,95 @@ const AccountManagement = () => {
     }
   };
 
+  // Xử lý đăng ký biên tập viên
+  const handleRegisterChange = (e) => {
+    const { name, value } = e.target;
+    setRegisterFormData({ ...registerFormData, [name]: value });
+  };
+
+  const validatePassword = (password) => {
+    if (password.length < 6) {
+      return 'Mật khẩu phải có ít nhất 6 ký tự!';
+    }
+    return '';
+  };
+
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    setRegisterError('');
+
+    if (
+      !registerFormData.email ||
+      !registerFormData.password ||
+      !registerFormData.confirmPassword ||
+      !registerFormData.fullName ||
+      !registerFormData.birthday
+    ) {
+      setRegisterError('Vui lòng nhập đầy đủ thông tin!');
+      return;
+    }
+
+    if (registerFormData.password !== registerFormData.confirmPassword) {
+      setRegisterError('Mật khẩu xác nhận không khớp!');
+      return;
+    }
+
+    const passwordError = validatePassword(registerFormData.password);
+    if (passwordError) {
+      setRegisterError(passwordError);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const userData = {
+        email: registerFormData.email,
+        password: registerFormData.password,
+        fullName: registerFormData.fullName,
+        sex: registerFormData.sex,
+        role: 'Editor', // Đảm bảo vai trò là Editor
+        birthday: new Date(registerFormData.birthday).toISOString(),
+      };
+
+      await registerEditor(userData); // Sử dụng registerEditor thay vì registerUser
+      await sendVerificationEmail(registerFormData.email);
+      setIsRegistered(true);
+    } catch (err) {
+      setRegisterError(err.message || 'Đăng ký biên tập viên thất bại. Vui lòng thử lại!');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegisterVerifySubmit = async (e) => {
+    e.preventDefault();
+    setRegisterVerifyError('');
+
+    try {
+      setLoading(true);
+      await verifyCode(registerFormData.email, registerVerifyCodeInput);
+      setSuccessMessage('Xác thực email thành công! Tài khoản biên tập viên đã được tạo.');
+      setShowRegisterModal(false);
+      setRegisterFormData({
+        email: '',
+        password: '',
+        confirmPassword: '',
+        fullName: '',
+        sex: 'Female',
+        role: 'Editor',
+        birthday: '',
+      });
+      setIsRegistered(false);
+      setRegisterVerifyCodeInput('');
+      fetchUsers(); // Cập nhật danh sách người dùng
+    } catch (err) {
+      setRegisterVerifyError(err.message || 'Mã xác thực không đúng. Vui lòng thử lại!');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Tạo nút phân trang
   const renderPagination = () => {
     const items = [];
@@ -280,8 +376,6 @@ const AccountManagement = () => {
       </Pagination>
     );
   };
-
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
 
   return (
     <div className="d-flex flex-column min-vh-100">
@@ -455,6 +549,7 @@ const AccountManagement = () => {
           </Tab>
         </Tabs>
 
+        {/* Modal xác minh tài khoản */}
         <Modal show={showVerifyModal} onHide={() => { setShowVerifyModal(false); setVerifyCodeInput(''); setVerifyError(''); }} centered>
           <Modal.Body className="p-5">
             <div className="d-flex justify-content-between align-items-center mb-4">
@@ -523,15 +618,226 @@ const AccountManagement = () => {
           </Modal.Body>
         </Modal>
 
-        <Modal show={showRegisterModal} onHide={() => { setShowRegisterModal(false); }} centered>
-          <Modal.Body className="p-5">
-            <div className="d-flex justify-content-between align-items-center mb-4">
-              <h3 className="modal-title">Đăng Ký Biên Tập Viên</h3>
-              <Button variant="link" className="p-0" onClick={() => setShowRegisterModal(false)} disabled={loading}>
-                <i className="bi bi-x-lg"></i>
-              </Button>
-            </div>
-            {/* Form đăng ký biên tập viên sẽ được thêm tương tự Register.js */}
+        {/* Modal đăng ký biên tập viên */}
+        <Modal show={showRegisterModal} onHide={() => { setShowRegisterModal(false); setIsRegistered(false); setRegisterVerifyCodeInput(''); setRegisterError(''); setRegisterVerifyError(''); }} centered dialogClassName="custom-wide-modal" size="xl">
+          <Modal.Body className="p-0">
+            <Row className="m-0">
+              <Col md={4} className="d-none d-md-block login-left-section">
+                <div className="d-flex justify-content-center align-items-center h-100">
+                  <Image src="../src/assets/img/logo.png" alt="Logo" className="login-logo" fluid />
+                </div>
+              </Col>
+
+              <Col md={8} className="login-right-section p-5">
+                <div className="d-flex justify-content-between align-items-center mb-4">
+                  <h3 className="modal-title">{isRegistered ? 'Xác thực email' : 'Đăng ký biên tập viên'}</h3>
+                  <Button variant="link" className="p-0" onClick={() => { setShowRegisterModal(false); setIsRegistered(false); setRegisterVerifyCodeInput(''); setRegisterError(''); setRegisterVerifyError(''); }} disabled={loading}>
+                    <i className="bi bi-x-lg"></i>
+                  </Button>
+                </div>
+
+                {registerError && <Alert variant="danger">{registerError}</Alert>}
+                {registerVerifyError && <Alert variant="danger">{registerVerifyError}</Alert>}
+
+                {!isRegistered ? (
+                  <Form onSubmit={handleRegisterSubmit}>
+                    <Row className="g-4">
+                      <Col md={6}>
+                        <Form.Group controlId="formRegisterEmail">
+                          <Form.Label className="form-label">Email</Form.Label>
+                          <InputGroup>
+                            <InputGroup.Text>
+                              <i className="bi bi-envelope"></i>
+                            </InputGroup.Text>
+                            <Form.Control
+                              type="email"
+                              name="email"
+                              value={registerFormData.email}
+                              onChange={handleRegisterChange}
+                              placeholder="Nhập email"
+                              required
+                              className="form-control-custom rounded-end"
+                              disabled={loading}
+                            />
+                          </InputGroup>
+                        </Form.Group>
+                      </Col>
+                      <Col md={6}>
+                        <Form.Group controlId="formRegisterFullName">
+                          <Form.Label className="form-label">Họ và tên</Form.Label>
+                          <InputGroup>
+                            <InputGroup.Text>
+                              <i className="bi bi-person"></i>
+                            </InputGroup.Text>
+                            <Form.Control
+                              type="text"
+                              name="fullName"
+                              value={registerFormData.fullName}
+                              onChange={handleRegisterChange}
+                              placeholder="Nhập họ và tên"
+                              required
+                              className="form-control-custom rounded-end"
+                              disabled={loading}
+                            />
+                          </InputGroup>
+                        </Form.Group>
+                      </Col>
+                    </Row>
+
+                    <Row className="g-4 mt-3">
+                      <Col md={6}>
+                        <Form.Group controlId="formRegisterPassword">
+                          <Form.Label className="form-label">Mật khẩu</Form.Label>
+                          <InputGroup>
+                            <InputGroup.Text>
+                              <i className="bi bi-lock"></i>
+                            </InputGroup.Text>
+                            <Form.Control
+                              type="password"
+                              name="password"
+                              value={registerFormData.password}
+                              onChange={handleRegisterChange}
+                              placeholder="Nhập mật khẩu"
+                              required
+                              className="form-control-custom rounded-end"
+                              disabled={loading}
+                            />
+                          </InputGroup>
+                        </Form.Group>
+                      </Col>
+                      <Col md={6}>
+                        <Form.Group controlId="formRegisterConfirmPassword">
+                          <Form.Label className="form-label">Xác nhận mật khẩu</Form.Label>
+                          <InputGroup>
+                            <InputGroup.Text>
+                              <i className="bi bi-lock"></i>
+                            </InputGroup.Text>
+                            <Form.Control
+                              type="password"
+                              name="confirmPassword"
+                              value={registerFormData.confirmPassword}
+                              onChange={handleRegisterChange}
+                              placeholder="Xác nhận mật khẩu"
+                              required
+                              className="form-control-custom rounded-end"
+                              disabled={loading}
+                            />
+                          </InputGroup>
+                        </Form.Group>
+                      </Col>
+                    </Row>
+
+                    <Row className="g-4 mt-3">
+                      <Col md={6}>
+                        <Form.Group controlId="formRegisterSex">
+                          <Form.Label className="form-label">Giới tính</Form.Label>
+                          <Form.Select
+                            name="sex"
+                            value={registerFormData.sex}
+                            onChange={handleRegisterChange}
+                            className="form-control-custom"
+                            disabled={loading}
+                          >
+                            <option value="Female">Nữ</option>
+                            <option value="Male">Nam</option>
+                            <option value="Other">Khác</option>
+                          </Form.Select>
+                        </Form.Group>
+                      </Col>
+                      <Col md={6}>
+                        <Form.Group controlId="formRegisterBirthday">
+                          <Form.Label className="form-label">Ngày sinh</Form.Label>
+                          <Form.Control
+                            type="date"
+                            name="birthday"
+                            value={registerFormData.birthday}
+                            onChange={handleRegisterChange}
+                            required
+                            className="form-control-custom"
+                            disabled={loading}
+                          />
+                        </Form.Group>
+                      </Col>
+                    </Row>
+
+                    <Button
+                      variant="primary"
+                      type="submit"
+                      className="w-100 btn-custom rounded-pill mt-4"
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <>
+                          <Spinner
+                            as="span"
+                            animation="border"
+                            size="sm"
+                            role="status"
+                            aria-hidden="true"
+                            className="me-2"
+                          />
+                          Đang xử lý...
+                        </>
+                      ) : (
+                        'Đăng ký'
+                      )}
+                    </Button>
+                  </Form>
+                ) : (
+                  <Form onSubmit={handleRegisterVerifySubmit}>
+                    <Form.Group controlId="formVerifyCode">
+                      <Form.Label className="form-label">Nhập mã xác thực</Form.Label>
+                      <Form.Control
+                        type="text"
+                        value={registerVerifyCodeInput}
+                        onChange={(e) => setRegisterVerifyCodeInput(e.target.value)}
+                        placeholder="Nhập mã xác thực từ email"
+                        required
+                        className="form-control-custom"
+                        disabled={loading}
+                      />
+                    </Form.Group>
+
+                    <Button
+                      variant="primary"
+                      type="submit"
+                      className="w-100 btn-custom rounded-pill mt-4"
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <>
+                          <Spinner
+                            as="span"
+                            animation="border"
+                            size="sm"
+                            role="status"
+                            aria-hidden="true"
+                            className="me-2"
+                          />
+                          Đang xác thực...
+                        </>
+                      ) : (
+                        'Xác thực'
+                      )}
+                    </Button>
+
+                    <div className="text-center mt-3">
+                      <p className="mb-0 link-text">
+                        Không nhận được mã?{' '}
+                        <Button
+                          variant="link"
+                          className="p-0 text-primary link-text"
+                          onClick={() => sendVerificationEmail(registerFormData.email)}
+                          disabled={loading}
+                        >
+                          Gửi lại mã
+                        </Button>
+                      </p>
+                    </div>
+                  </Form>
+                )}
+              </Col>
+            </Row>
           </Modal.Body>
         </Modal>
       </Container>

@@ -7,6 +7,33 @@ export const registerUser = async (userData) => {
   return response.data;
 };
 
+export const registerEditor = async (userData) => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('Bạn chưa đăng nhập. Vui lòng đăng nhập lại!');
+    }
+
+    const response = await axios.post(
+      `${API_BASE_URL}/registerEditor`,
+      userData,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (response.status !== 200) {
+      throw new Error(response.data.message || 'Đăng ký biên tập viên thất bại!');
+    }
+    return response.data;
+  } catch (error) {
+    throw new Error(error.response?.data?.message || 'Lỗi kết nối đến server!');
+  }
+};
+
 export const sendVerificationEmail = async (email) => {
   const response = await axios.get(`${API_BASE_URL}/verifyEmail?email=${email}`);
   return response.data;

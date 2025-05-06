@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Container, Row, Col, Form, Button, Card, Dropdown, Alert, Spinner } from 'react-bootstrap';
@@ -156,7 +155,8 @@ const CommentSection = ({
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h5 className="comment-title">Bình luận ({comments.length})</h5>
           <div className="d-flex align-items-center">
-            <Dropdown onSelect={(key) => setSortBy(key)} className="me-3">
+            <Dropdown onSelect={(key) => setSortBy(key)} className="meCollection: news_app_react
+3">
               <Dropdown.Toggle variant="outline-primary" size="sm">
                 Sắp xếp: {sortBy === 'newest' ? 'Mới nhất' : 'Cũ nhất'}
               </Dropdown.Toggle>
@@ -352,13 +352,14 @@ const NewsDetailPage = () => {
   const [loading, setLoading] = useState(!state?.article);
   const [error, setError] = useState('');
   const [comments, setComments] = useState([]);
+  const [commentError, setCommentError] = useState('');
   const [sortBy, setSortBy] = useState('newest');
   const [isSaved, setIsSaved] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
   const [userMapping, setUserMapping] = useState(JSON.parse(localStorage.getItem('userMapping')) || {});
   const [commentsLoaded, setCommentsLoaded] = useState(false);
-  const [relatedArticles, setRelatedArticles] = useState([]);
+  const [latestArticles, setLatestArticles] = useState([]);
   const token = localStorage.getItem('token') || '';
   const userRole = user?.roleId || null;
   const commentSectionRef = useRef(null);
@@ -372,7 +373,7 @@ const NewsDetailPage = () => {
   };
 
   const checkSaveStatus = async () => {
-    if (!isLoggedIn || !token) {
+    if (!isLoggedIn || !token || userRole !== 1) {
       return;
     }
 
@@ -390,30 +391,72 @@ const NewsDetailPage = () => {
     }
   };
 
-  const fetchRelatedArticles = async () => {
-    if (!article?.categoryName) return;
-
+  const fetchLatestArticles = async () => {
     try {
       const response = await axios.get(`${API_URL_ARTICLE_DETAIL}/filter`, {
         params: {
-          categoryName: article.categoryName,
           pageNumber: 1,
           pageSize: 3,
           excludeId: id,
+          sortBy: 'createdAt',
+          sortOrder: 'desc',
         },
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
-      const relatedData = response.data?.data?.items || [];
-      setRelatedArticles(relatedData.map(item => ({
+      const latestData = response.data?.data?.items || [];
+      setLatestArticles(latestData.map(item => ({
         id: item.id,
         title: item.title || 'Tiêu đề không có',
         thumbnail: item.thumbnail || '',
       })));
     } catch (error) {
-      console.error('Lỗi khi lấy bài viết liên quan:', error.response?.data?.message || error.message);
+      console.error('Lỗi khi lấy bài viết mới nhất:', error.response?.data?.message || error.message);
     }
   };
+
+  const fetchComments = async () => {
+    try {
+      const cachedComments = JSON.parse(localStorage.getItem(`comments-${id}`));
+      if (cachedComments && cachedComments.length > 0) {
+        console.log('Dùng bình luận từ cache:', cachedComments);
+        setComments(cachedComments);
+        setCommentsLoaded(true);
+        return;
+      }
+
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+      const response = await axios.get(`${API_URL_COMMENT}/article/${id}`, {
+        params: { pageNumber: 1, pageSize: 10 },
+        ...config,
+      });
+
+      console.log('Dữ liệu bình luận từ API:', response.data);
+      const commentData = response.data?.data?.items || [];
+      const savedReplies = JSON.parse(localStorage.getItem(`replies-${id}`)) || {};
+
+      const formattedComments = commentData.map((comment) => ({
+        id: comment.id,
+        text: comment.content,
+        createdAt: comment.createdAt,
+        replies: savedReplies[comment.id] || [],
+        author: comment.userAccountId,
+        isHiden: comment.isHiden || false,
+      }));
+
+      setComments(formattedComments);
+      localStorage.setItem(`comments-${id}`, JSON.stringify(formattedComments));
+      setCommentsLoaded(true);
+    } catch (error) {
+      console.error('Lỗi khi lấy danh sách bình luận:', error.response?.data?.message || error.message);
+      setCommentError('Không thể tải bình luận. Vui lòng thử lại sau.');
+      setCommentsLoaded(true);
+    }
+  };
+
+  useEffect(() => {
+    fetchComments();
+  }, [id, token]);
 
   useEffect(() => {
     const fetchUserNamesForComments = async () => {
@@ -449,8 +492,8 @@ const NewsDetailPage = () => {
 
   useEffect(() => {
     checkSaveStatus();
-    if (article) fetchRelatedArticles();
-  }, [id, token, isLoggedIn, article]);
+    if (article) fetchLatestArticles();
+  }, [id, token, isLoggedIn, article, userRole]);
 
   useEffect(() => {
     const fetchArticleDetail = async () => {
@@ -509,67 +552,10 @@ const NewsDetailPage = () => {
     fetchArticleDetail();
   }, [id, token]);
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !commentsLoaded) {
-          const fetchComments = async () => {
-            try {
-              const cachedComments = JSON.parse(localStorage.getItem(`comments-${id}`));
-              if (cachedComments) {
-                setComments(cachedComments);
-                setCommentsLoaded(true);
-                return;
-              }
-
-              const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-              const response = await axios.get(`${API_URL_COMMENT}/article/${id}`, {
-                params: { pageNumber: 1, pageSize: 10, descending: true },
-                ...config,
-              });
-
-              const commentData = response.data?.data?.items || [];
-              const savedReplies = JSON.parse(localStorage.getItem(`replies-${id}`)) || {};
-
-              const formattedComments = commentData.map((comment) => ({
-                id: comment.id,
-                text: comment.content,
-                createdAt: comment.createdAt,
-                replies: savedReplies[comment.id] || [],
-                author: comment.userAccountId,
-                isHiden: comment.isHiden || false,
-              }));
-
-              setComments(formattedComments);
-              localStorage.setItem(`comments-${id}`, JSON.stringify(formattedComments));
-              setCommentsLoaded(true);
-            } catch (error) {
-              console.error('Lỗi khi lấy danh sách bình luận:', error.response?.data?.message || error.message);
-              setCommentsLoaded(true);
-            }
-          };
-
-          fetchComments();
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    if (commentSectionRef.current) {
-      observer.observe(commentSectionRef.current);
-    }
-
-    return () => {
-      if (commentSectionRef.current) {
-        observer.unobserve(commentSectionRef.current);
-      }
-    };
-  }, [id, token, commentsLoaded]);
-
   const handleSaveArticle = async () => {
-    if (!isLoggedIn || !token) {
-      console.log('Người dùng chưa đăng nhập, không thể lưu bài viết.');
-      setSaveError('Vui lòng đăng nhập để lưu bài viết.');
+    if (!isLoggedIn || !token || userRole !== 1) {
+      console.log('Người dùng chưa đăng nhập hoặc không có quyền lưu bài viết.');
+      setSaveError('Vui lòng đăng nhập với tài khoản người dùng để lưu bài viết.');
       setTimeout(() => setSaveError(''), 3000);
       return;
     }
@@ -599,9 +585,9 @@ const NewsDetailPage = () => {
   };
 
   const handleUnsaveArticle = async () => {
-    if (!isLoggedIn || !token) {
-      console.log('Người dùng chưa đăng nhập, không thể hủy lưu bài viết.');
-      setSaveError('Vui lòng đăng nhập để hủy lưu bài viết.');
+    if (!isLoggedIn || !token || userRole !== 1) {
+      console.log('Người dùng chưa đăng nhập hoặc không có quyền hủy lưu bài viết.');
+      setSaveError('Vui lòng đăng nhập với tài khoản người dùng để hủy lưu bài viết.');
       setTimeout(() => setSaveError(''), 3000);
       return;
     }
@@ -899,7 +885,7 @@ const NewsDetailPage = () => {
                 <strong>Tác giả:</strong> {article.author}
               </span>
             </div>
-            {isLoggedIn && (
+            {isLoggedIn && userRole === 1 && (
               <div className="mb-4">
                 {saveError && (
                   <Alert variant="danger" onClose={() => setSaveError('')} dismissible>
@@ -998,6 +984,11 @@ const NewsDetailPage = () => {
                 </div>
               )}
             </div>
+            {commentError && (
+              <Alert variant="danger" onClose={() => setCommentError('')} dismissible>
+                {commentError}
+              </Alert>
+            )}
             <div ref={commentSectionRef}>
               <CommentSection
                 comments={comments}
@@ -1019,16 +1010,16 @@ const NewsDetailPage = () => {
           <Col md={4}>
             <Card className="mb-4">
               <Card.Body>
-                <h5 className="mb-3">Bài viết liên quan</h5>
-                {relatedArticles.length > 0 ? (
-                  relatedArticles.map((related) => (
-                    <div key={related.id} className="mb-2">
-                      <a href={`/news/${related.id}`} className="text-decoration-none text-dark">
-                        {related.title}
+                <h5 className="mb-3">Bài viết mới</h5>
+                {latestArticles.length > 0 ? (
+                  latestArticles.map((article) => (
+                    <div key={article.id} className="mb-2">
+                      <a href={`/news/${article.id}`} className="text-decoration-none text-dark">
+                        {article.title}
                       </a>
                       <img
-                        src={getAbsoluteThumbnailUrl(related.thumbnail)}
-                        alt={related.title}
+                        src={getAbsoluteThumbnailUrl(article.thumbnail)}
+                        alt={article.title}
                         className="img-fluid mt-2"
                         style={{ width: '100%', height: 'auto', borderRadius: '8px' }}
                         onError={(e) => { e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found'; }}
@@ -1037,21 +1028,8 @@ const NewsDetailPage = () => {
                     </div>
                   ))
                 ) : (
-                  <p className="text-muted">Không có bài viết liên quan.</p>
+                  <p className="text-muted">Không có bài viết mới.</p>
                 )}
-              </Card.Body>
-            </Card>
-            <Card>
-              <Card.Body>
-                <h5 className="mb-3">Quảng cáo</h5>
-                <div className="text-center">
-                  <img
-                    src="https://placehold.co/300x250?text=Quảng+cáo"
-                    alt="Quảng cáo"
-                    className="img-fluid"
-                    style={{ borderRadius: '8px' }}
-                  />
-                </div>
               </Card.Body>
             </Card>
           </Col>

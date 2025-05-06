@@ -313,6 +313,17 @@ const UserProfile = () => {
                   )}
                 </Form>
 
+                {/* Nút Đổi mật khẩu */}
+                {!isEditing && (
+                  <Button
+                    variant="outline-primary"
+                    className="w-100 btn-custom rounded-pill mt-3"
+                    onClick={handleShowPasswordModal}
+                  >
+                    Đổi mật khẩu
+                  </Button>
+                )}
+
                 {/* Modal xác nhận lưu thành công */}
                 <Modal show={showSuccessModal} onHide={handleCloseModal} centered>
                   <Modal.Header closeButton>
@@ -328,7 +339,7 @@ const UserProfile = () => {
                   </Modal.Footer>
                 </Modal>
 
-                {/* Modal thay đổi mật khẩu */}
+                {/* Modal đổi mật khẩu */}
                 <Modal show={showPasswordModal} onHide={handleClosePasswordModal} centered>
                   <Modal.Header closeButton>
                     <Modal.Title>{passwordStep === 1 ? 'Đặt lại mật khẩu' : 'Xác nhận OTP'}</Modal.Title>
@@ -337,7 +348,7 @@ const UserProfile = () => {
                     {passwordError && <Alert variant="danger">{passwordError}</Alert>}
                     <Form onSubmit={handlePasswordSubmit}>
                       {passwordStep === 1 ? (
-                        <Form.Group className="mb-3" controlId="formResetEmail">
+                        <Form.Group className="mb-4" controlId="formResetEmail">
                           <Form.Label className="form-label">Email</Form.Label>
                           <Form.Control
                             type="email"
@@ -346,12 +357,12 @@ const UserProfile = () => {
                             onChange={handlePasswordChange}
                             placeholder="Nhập email"
                             className="form-control-custom rounded-pill"
-                            required
+                            disabled
                           />
                         </Form.Group>
                       ) : (
                         <>
-                          <Form.Group className="mb-3" controlId="formOtp">
+                          <Form.Group className="mb-4" controlId="formResetOTP">
                             <Form.Label className="form-label">Mã OTP</Form.Label>
                             <Form.Control
                               type="text"
@@ -363,7 +374,7 @@ const UserProfile = () => {
                               required
                             />
                           </Form.Group>
-                          <Form.Group className="mb-3" controlId="formNewPassword">
+                          <Form.Group className="mb-4" controlId="formResetNewPassword">
                             <Form.Label className="form-label">Mật khẩu mới</Form.Label>
                             <Form.Control
                               type="password"
@@ -375,7 +386,7 @@ const UserProfile = () => {
                               required
                             />
                           </Form.Group>
-                          <Form.Group className="mb-3" controlId="formConfirmPassword">
+                          <Form.Group className="mb-4" controlId="formResetConfirmPassword">
                             <Form.Label className="form-label">Xác nhận mật khẩu mới</Form.Label>
                             <Form.Control
                               type="password"

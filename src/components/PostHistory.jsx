@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { Container, Table, Button, Alert, Pagination, Form, Modal } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import Header from './Header';
 import Footer from './Footer';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
-import { FaEye, FaEdit, FaTrash, FaUndo, FaPaperPlane } from 'react-icons/fa';
+import { FaEye, FaEdit, FaTrash, FaUndo, FaPaperPlane, FaComment } from 'react-icons/fa';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 
@@ -13,9 +13,10 @@ const API_URL_ARTICLE = 'http://localhost:8000/article/api/v1/Article';
 const API_URL_ARTICLE_FILTER = `${API_URL_ARTICLE}/filter`;
 const API_URL_ARTICLE_ADMIN = `${API_URL_ARTICLE}/admin`;
 const API_URL_ARTICLE_EDITOR = `${API_URL_ARTICLE}/editor`;
-const API_URL_UPDATE_STATUS = `${API_URL_ARTICLE}/update-status`; // Thêm endpoint mới
+const API_URL_UPDATE_STATUS = `${API_URL_ARTICLE}/update-status`;
 const API_URL_UPLOAD = 'http://localhost:8000/article/api/v1/Upload/images';
 const API_URL_CATEGORY_FILTER = 'http://localhost:8000/article/api/v1/Category/filter';
+const API_URL_COMMENTS = 'http://localhost:8000/article/api/v1/Comment/article';
 const API_BASE_URL = 'http://localhost:8000';
 
 const PostHistory = () => {
@@ -77,6 +78,26 @@ const PostHistory = () => {
     }
   };
 
+  const fetchCommentsCount = async (articleId) => {
+    try {
+      const response = await axios.get(`${API_URL_COMMENTS}/${articleId}?pageNumber=1&pageSize=10`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.data.statusCode === 200 && response.data.data) {
+        return response.data.data.totalCount || 0;
+      } else {
+        console.warn(`Không thể lấy số bình luận cho bài viết ${articleId}: ${response.data.message}`);
+        return 0;
+      }
+    } catch (err) {
+      console.error(`Lỗi khi lấy số bình luận cho bài viết ${articleId}: ${err.response?.data?.message || err.message}`);
+      return 0;
+    }
+  };
+
   const fetchPosts = async (page = 1) => {
     if (!checkToken()) return;
     try {
@@ -106,8 +127,16 @@ const PostHistory = () => {
           }
           return post.userDetails.userAccountId === currentUserAccountId;
         });
-        console.log('Danh sách bài viết:', filteredPosts);
-        setPosts(filteredPosts);
+
+        // Lấy số bình luận cho từng bài viết
+        const postsWithComments = await Promise.all(
+          filteredPosts.map(async (post) => {
+            const commentCount = await fetchCommentsCount(post.id);
+            return { ...post, commentCount };
+          })
+        );
+
+        setPosts(postsWithComments);
         setTotalPages(response.data.data.totalPages || 1);
         setTotalCount(response.data.data.totalCount || 0);
         setCurrentPage(response.data.data.pageNumber || 1);
@@ -149,8 +178,8 @@ const PostHistory = () => {
       return;
     }
 
-    if (user.roleId === 2 && !['DRAFT', 'PENDING', 'REJECTED'].includes(post.status)) {
-      setError('Bạn chỉ có thể xóa bài ở trạng thái Bản nháp, Chờ duyệt hoặc Bị từ chối.');
+    if (user.roleId === 2 && !['DRAFT', 'REJECTED'].includes(post.status)) {
+      setError('Bạn chỉ có thể xóa bài ở trạng thái Bản nháp hoặc Bị từ chối.');
       return;
     }
 
@@ -196,8 +225,8 @@ const PostHistory = () => {
 
     try {
       const response = await axios.put(
-        `${API_URL_UPDATE_STATUS}/${postId}`, // Sử dụng endpoint mới
-        { status: newStatus }, // Payload chỉ chứa status
+        `${API_URL_UPDATE_STATUS}/${postId}`,
+        { status: newStatus },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -512,6 +541,7 @@ const PostHistory = () => {
                   <th>#</th>
                   <th>Tiêu đề</th>
                   <th>Trạng thái</th>
+                  <th>Số bình luận</th>
                   <th>Ngày tạo</th>
                   <th>Ngày xuất bản</th>
                   <th>Ngày cập nhật</th>
@@ -524,6 +554,11 @@ const PostHistory = () => {
                     <td>{(currentPage - 1) * pageSize + index + 1}</td>
                     <td>{post.title || 'Không có tiêu đề'}</td>
                     <td>{getStatusBadge(post.status)}</td>
+                    <td>
+                      <span className="d-flex align-items-center justify-content-center">
+                        <FaComment className="me-1" /> {post.commentCount || 0}
+                      </span>
+                    </td>
                     <td>{formatDateTime(post.createAt)}</td>
                     <td>{formatDateTime(post.publishedAt)}</td>
                     <td>{formatDateTime(post.updateAt)}</td>
@@ -570,15 +605,17 @@ const PostHistory = () => {
                               <FaUndo />
                             </Button>
                           )}
-                          <Button
-                            variant="outline-danger"
-                            size="sm"
-                            className="me-2"
-                            onClick={() => handleDeletePost(post.id)}
-                            title="Xóa"
-                          >
-                            <FaTrash />
-                          </Button>
+                          {(user.roleId === 1 || (user.roleId === 2 && ['DRAFT', 'REJECTED'].includes(post.status))) && (
+                            <Button
+                              variant="outline-danger"
+                              size="sm"
+                              className="me-2"
+                              onClick={() => handleDeletePost(post.id)}
+                              title="Xóa"
+                            >
+                              <FaTrash />
+                            </Button>
+                          )}
                         </>
                       )}
                     </td>

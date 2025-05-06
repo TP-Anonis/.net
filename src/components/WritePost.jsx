@@ -13,7 +13,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
 const API_URL_ARTICLE_EDITOR = `${API_BASE_URL}/article/api/v1/Article/editor`;
 const API_URL_ARTICLE_ADMIN = `${API_BASE_URL}/article/api/v1/Article/admin`;
 const API_URL_UPLOAD = `${API_BASE_URL}/article/api/v1/Upload/images`;
-const API_URL_CATEGORIES = `${API_BASE_URL}/article/api/v1/Category/filter?pageNumber=1&pageSize=10`;
+const API_URL_CATEGORIES = `${API_BASE_URL}/article/api/v1/Category/filter?pageNumber=1&pageSize=15`;
 
 const WritePost = () => {
   const { user } = useContext(AuthContext);

@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect } from 'react';
-import { Navbar, Nav, Button, Container, Form, InputGroup, Dropdown, NavDropdown } from 'react-bootstrap';
+import { Navbar, Nav, Button, Container, Dropdown, NavDropdown } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import Login from './Login';
 import { AuthContext } from '../context/AuthContext';
@@ -7,17 +7,14 @@ import { FaUser, FaFileAlt, FaPen, FaUsers, FaFolderOpen, FaChartBar, FaNewspape
 import axios from 'axios';
 import '../assets/css/HomePage.css';
 
-// Cập nhật URL API (nếu có API công khai thì sử dụng, nếu không thì giữ nguyên và xử lý lỗi)
-const API_URL_TOPIC_FILTER = 'http://localhost:8000/article/api/v1/Topic/filter?pageNumber=1&pageSize=5&sortByNameAsc=false';
+const API_URL_TOPIC_FILTER = 'http://localhost:8000/article/api/v1/Topic/filter?pageNumber=1&pageSize=10&sortByNameAsc=false';
 const API_URL_CATEGORY_FILTER = 'http://localhost:8000/article/api/v1/Category/filter?pageNumber=1&pageSize=10';
 
-// Biến toàn cục để làm mới danh sách
 let refreshDataCallback = null;
 
 const Header = () => {
   const { isLoggedIn, user, logout } = useContext(AuthContext);
   const [showLogin, setShowLogin] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [currentDate, setCurrentDate] = useState('');
   const [topics, setTopics] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -43,11 +40,13 @@ const Header = () => {
       const token = localStorage.getItem('token');
       const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
       const response = await axios.get(API_URL_TOPIC_FILTER, config);
-
       const topicData = response.data?.data?.items || [];
+      console.log('Danh sách chủ đề từ API:', topicData); // Log để kiểm tra dữ liệu
+      // Chỉ lọc tâm lý và chính trị, giữ lại pháp luật
       const filteredTopics = topicData.filter(
-        (topic) => !['tâm lý', 'pháp luật', 'chính trị'].includes(topic.name.toLowerCase())
+        (topic) => !['tâm lý', 'chính trị'].includes(topic.name.toLowerCase())
       );
+      console.log('Danh sách chủ đề sau khi lọc:', filteredTopics); // Log để kiểm tra sau lọc
       setTopics(filteredTopics);
     } catch (error) {
       console.error('Lỗi khi lấy danh sách chủ đề:', error.response?.data || error.message);
@@ -59,7 +58,6 @@ const Header = () => {
       const token = localStorage.getItem('token');
       const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
       const response = await axios.get(API_URL_CATEGORY_FILTER, config);
-
       const categoryData = response.data?.data?.items || [];
       setCategories(categoryData);
     } catch (error) {
@@ -95,29 +93,21 @@ const Header = () => {
     navigate('/');
   };
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/search?query=${encodeURIComponent(searchQuery)}`);
-    }
-  };
-
-  const handleCategorySelect = (categoryName) => {
-    navigate(`/search?category=${encodeURIComponent(categoryName)}`);
-  };
-
   const routeMapping = {
     'thể thao': 'the-thao',
     'thế giới': 'the-gioi',
     'sức khỏe': 'suc-khoe',
     'kinh doanh': 'kinh-doanh',
     'giải trí': 'giai-tri',
+    'pháp luật': 'phap-luat',
+    'bất động sản': 'bat-dong-san', // Thêm định dạng cho Bất động sản
   };
 
   const visibleTopics = topics
     .map((topic) => {
       const formattedName = topic.name.toLowerCase().replace(/\s+/g, '-');
       const route = routeMapping[topic.name.toLowerCase()] || formattedName;
+      console.log(`Topic: ${topic.name}, Route: ${route}`); // Log để kiểm tra route
       return { ...topic, route };
     })
     .slice(0, 7);
@@ -150,9 +140,11 @@ const Header = () => {
                 <Dropdown.Item as={Link} to="/profile">
                   <FaUser className="me-2" /> Thông tin người dùng
                 </Dropdown.Item>
-                <Dropdown.Item as={Link} to="/saved-articles">
-                  <FaBookmark className="me-2" /> Bài viết đã lưu
-                </Dropdown.Item>
+                {user?.roleId === 1 && (
+                  <Dropdown.Item as={Link} to="/saved-articles">
+                    <FaBookmark className="me-2" /> Bài viết đã lưu
+                  </Dropdown.Item>
+                )}
                 {(user?.roleId === 2 || user?.roleId === 3) && (
                   <>
                     <Dropdown.Item as={Link} to="/write-post">
@@ -174,11 +166,8 @@ const Header = () => {
                     <Dropdown.Item as={Link} to="/content-management">
                       <FaFolderOpen className="me-2" /> Quản lý nội dung
                     </Dropdown.Item>
-                    <Dropdown.Item as={Link} to="/overview-stats">
-                      <FaChartBar className="me-2" /> Xem thống kê tổng quan
-                    </Dropdown.Item>
-                    <Dropdown.Item as={Link} to="/article-stats">
-                      <FaNewspaper className="me-2" /> Xem thống kê bài báo
+                    <Dropdown.Item as={Link} to="/comprehensive-stats">
+                      <FaChartBar className="me-2" /> Xem thống kê tổng hợp
                     </Dropdown.Item>
                   </>
                 )}
@@ -218,35 +207,6 @@ const Header = () => {
                 </NavDropdown>
               )}
             </Nav>
-            <div className="d-flex align-items-center">
-              <Form onSubmit={handleSearch} className="me-3">
-                <InputGroup className="search-bar">
-                  <Form.Control
-                    type="text"
-                    placeholder="Tìm kiếm tin tức..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    aria-label="Tìm kiếm"
-                    className="rounded-start"
-                  />
-                  <Button type="submit" variant="primary" className="search-icon rounded-end">
-                    <i className="bi bi-search"></i>
-                  </Button>
-                </InputGroup>
-              </Form>
-              <Dropdown onSelect={handleCategorySelect}>
-                <Dropdown.Toggle variant="outline-primary" id="dropdown-category">
-                  Chọn danh mục
-                </Dropdown.Toggle>
-                <Dropdown.Menu>
-                  {categories.map((category) => (
-                    <Dropdown.Item key={category.id} eventKey={category.name}>
-                      {category.name} ({category.topic.name})
-                    </Dropdown.Item>
-                  ))}
-                </Dropdown.Menu>
-              </Dropdown>
-            </div>
           </Navbar.Collapse>
         </Container>
       </Navbar>

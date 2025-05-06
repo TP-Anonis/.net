@@ -22,7 +22,10 @@ const SavedArticlesPage = () => {
   const token = localStorage.getItem('token') || '';
   const currentUserAccountId = localStorage.getItem('userAccountId') || '';
 
-  // Kiểm tra token hợp lệ
+  console.log('currentUserAccountId:', currentUserAccountId);
+  console.log('isLoggedIn:', isLoggedIn);
+  console.log('user from AuthContext:', user);
+
   const checkToken = () => {
     if (!token) {
       setError('Token không tồn tại. Vui lòng đăng nhập lại.');
@@ -31,6 +34,7 @@ const SavedArticlesPage = () => {
     }
     try {
       const decoded = jwtDecode(token);
+      console.log('Decoded token:', decoded);
       const currentTime = Date.now() / 1000;
       if (decoded.exp < currentTime) {
         setError('Token đã hết hạn. Vui lòng đăng nhập lại.');
@@ -38,7 +42,6 @@ const SavedArticlesPage = () => {
         navigate('/login');
         return false;
       }
-      // Đảm bảo currentUserAccountId khớp với token nếu token có userId
       if (decoded.userId && decoded.userId !== currentUserAccountId) {
         setError('Dữ liệu người dùng không khớp. Vui lòng đăng nhập lại.');
         localStorage.removeItem('userAccountId');
@@ -66,56 +69,40 @@ const SavedArticlesPage = () => {
         headers: { Authorization: `Bearer ${token}`, Accept: '*/*' },
         params: { pageNumber: 1, pageSize: 10 },
       });
+      console.log('API response:', response.data);
 
       if (response.data.statusCode === 200) {
         const items = response.data.data.items || [];
+        console.log('Items from API:', items);
         if (items.length === 0) {
           setSavedArticles([]);
           setError('Không có bài viết nào trong danh sách.');
           return;
         }
 
-        const articlesWithDetails = await Promise.all(
-          items.map(async (item) => {
-            try {
-              const articleDetailResponse = await axios.get(`${API_URL_ARTICLE_DETAIL}/${item.article.id}`, {
-                headers: { Authorization: `Bearer ${token}` },
-              });
-              const articleDetail = articleDetailResponse.data.data;
-              return {
-                storageId: item.id,
-                id: item.article.id,
-                title: item.article.title || 'Tiêu đề không có',
-                thumbnail: item.article.thumbnail || '',
-                createAt: item.article.createAt || new Date().toISOString(),
-                categoryName: articleDetail.category?.name || 'Chưa phân loại',
-                author: articleDetail.userDetails?.fullName || 'Chưa xác định',
-                isSaved: true,
-                userAccountId: item.article.userAccountId, // Thêm userAccountId để lọc
-              };
-            } catch (detailError) {
-              if (detailError.response && detailError.response.status === 404) {
-                return {
-                  storageId: item.id,
-                  id: item.article.id,
-                  title: item.article.title || 'Tiêu đề không có',
-                  thumbnail: item.article.thumbnail || '',
-                  createAt: item.article.createAt || new Date().toISOString(),
-                  categoryName: 'Chưa phân loại',
-                  author: 'Chưa xác định',
-                  isSaved: true,
-                  userAccountId: item.article.userAccountId, // Thêm userAccountId để lọc
-                };
-              }
-              throw detailError;
-            }
-          })
-        );
+        // Tạm thời bỏ qua gọi API chi tiết để kiểm tra dữ liệu gốc
+        const articlesWithDetails = items.map((item) => ({
+          storageId: item.id,
+          id: item.article.id,
+          title: item.article.title || 'Tiêu đề không có',
+          thumbnail: item.article.thumbnail || '',
+          createAt: item.article.createAt || new Date().toISOString(),
+          categoryName: 'Chưa phân loại', // Giá trị mặc định vì bỏ qua API chi tiết
+          author: 'Chưa xác định', // Giá trị mặc định vì bỏ qua API chi tiết
+          isSaved: true,
+          userAccountId: item.article.userAccountId,
+        }));
 
-        // Lọc bài viết dựa trên userAccountId của người dùng hiện tại
+        console.log('articlesWithDetails:', articlesWithDetails);
+
         const filteredArticles = articlesWithDetails.filter(
-          (article) => article.userAccountId === currentUserAccountId
+          (article) => {
+            console.log(`Comparing ${article.userAccountId} with ${currentUserAccountId}`);
+            return article.userAccountId === currentUserAccountId;
+          }
         );
+        console.log('filteredArticles:', filteredArticles);
+
         setSavedArticles(filteredArticles);
         if (filteredArticles.length === 0) {
           setError('Không có bài viết nào trong danh sách của bạn.');

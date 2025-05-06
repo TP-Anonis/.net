@@ -523,14 +523,6 @@ const AccountManagement = () => {
                           Mở khóa
                         </Button>
                       )}
-                      <Button
-                        variant="outline-info"
-                        size="sm"
-                        className="me-2"
-                        onClick={() => handleViewArticles(editor.id)}
-                      >
-                        Xem bài viết
-                      </Button>
                       {!editor.isVerified && (
                         <Button
                           variant="outline-primary"

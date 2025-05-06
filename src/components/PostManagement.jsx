@@ -20,7 +20,7 @@ const PostManagement = () => {
   const [categories, setCategories] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
-  const [originalAuthorId, setOriginalAuthorId] = useState(null); // Lưu userAccountId ban đầu
+  const [originalAuthorId, setOriginalAuthorId] = useState(null);
   const [formData, setFormData] = useState({
     title: '',
     thumbnail: '',
@@ -62,13 +62,13 @@ const PostManagement = () => {
         status: tempFilters.status || '',
         categoryId: tempFilters.categoryId || '',
       }).toString();
-
+  
       const response = await axios.get(`${API_URL_ARTICLE}/filter?${queryParams}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
+  
       if (response.data.statusCode === 200) {
-        const fetchedPosts = response.data.data.items || [];
+        const fetchedPosts = (response.data.data.items || []).filter(post => post.status !== 'DRAFT');
         setPosts(fetchedPosts);
         setTotalPages(response.data.data.totalPages || 1);
         setCurrentPage(page);
@@ -132,7 +132,7 @@ const PostManagement = () => {
   const handleCloseModal = () => {
     setShowModal(false);
     setSelectedPost(null);
-    setOriginalAuthorId(null); // Reset originalAuthorId
+    setOriginalAuthorId(null);
     setFormData({
       title: '',
       thumbnail: '',
@@ -146,7 +146,7 @@ const PostManagement = () => {
 
   const handleShowModal = (post) => {
     setSelectedPost(post);
-    setOriginalAuthorId(post.userDetails?.userAccountId || null); // Lưu userAccountId ban đầu
+    setOriginalAuthorId(post.userDetails?.userAccountId || null);
     setFormData({
       title: post.title || '',
       thumbnail: post.thumbnail || '',
@@ -154,7 +154,6 @@ const PostManagement = () => {
       categoryId: post.category?.id || '',
     });
     setPreviewImage(post.thumbnail ? `${BACKEND_URL}${post.thumbnail}` : null);
-    console.log('Preview Image URL:', `${BACKEND_URL}${post.thumbnail}`);
     setShowModal(true);
   };
 
@@ -189,7 +188,6 @@ const PostManagement = () => {
       const imageUrl = await uploadImage(file);
       setFormData((prev) => ({ ...prev, thumbnail: imageUrl }));
       setPreviewImage(`${BACKEND_URL}${imageUrl}`);
-      console.log('Uploaded Image URL:', `${BACKEND_URL}${imageUrl}`);
     } catch (error) {
       setError(error.message);
     } finally {
@@ -211,7 +209,6 @@ const PostManagement = () => {
       });
       const fileName = response.data?.data?.[0] || response.data?.data;
       if (!fileName || typeof fileName !== 'string') throw new Error('API không trả về tên file hợp lệ.');
-      console.log('FileName from API:', fileName);
       return fileName;
     } catch (error) {
       throw new Error('Upload hình ảnh thất bại: ' + (error.response?.data?.message || error.message));
@@ -253,9 +250,8 @@ const PostManagement = () => {
         categoryId: formData.categoryId,
       };
 
-      // Chỉ thêm userAccountId khi tạo mới (POST), không thêm khi chỉnh sửa (PUT)
       if (!selectedPost) {
-        articleData.userAccountId = user.id; // Chỉ thêm khi tạo mới
+        articleData.userAccountId = user.id;
       }
 
       const url = `${API_URL_ARTICLE}/admin/${selectedPost?.id || ''}`;
@@ -371,7 +367,6 @@ const PostManagement = () => {
       PUBLISHED: <Badge bg="success">Đã xuất bản</Badge>,
       REJECTED: <Badge bg="danger">Bị từ chối</Badge>,
       HIDDEN: <Badge bg="secondary">Đã ẩn</Badge>,
-      DRAFT: <Badge bg="warning">Nháp</Badge>,
     };
     return badges[status] || <Badge bg="secondary">Không xác định</Badge>;
   };
@@ -440,7 +435,6 @@ const PostManagement = () => {
                 <option value="PUBLISHED">Đã xuất bản</option>
                 <option value="REJECTED">Bị từ chối</option>
                 <option value="HIDDEN">Đã ẩn</option>
-                <option value="DRAFT">Nháp</option>
               </Form.Select>
             </Form.Group>
             <Form.Group style={{ width: '200px' }}>
@@ -487,11 +481,11 @@ const PostManagement = () => {
                     <td>{formatDateTime(post.createAt)}</td>
                     <td>{formatDateTime(post.publishedAt)}</td>
                     <td>{formatDateTime(post.updateAt)}</td>
-                    <td className="text-end">
+                    <td style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', alignItems: 'center' }}>
                       <Button
                         variant="info"
                         size="sm"
-                        className="me-2 rounded"
+                        className="rounded"
                         onClick={() => handleViewPost(post)}
                         title="Xem chi tiết"
                       >
@@ -500,7 +494,7 @@ const PostManagement = () => {
                       <Button
                         variant="primary"
                         size="sm"
-                        className="me-2 rounded"
+                        className="rounded"
                         onClick={() => handleShowModal(post)}
                         title="Chỉnh sửa"
                       >
@@ -511,7 +505,7 @@ const PostManagement = () => {
                           <Button
                             variant="success"
                             size="sm"
-                            className="me-2 rounded"
+                            className="rounded"
                             onClick={() => handleUpdateStatus(post.id, 'PUBLISHED')}
                             title="Duyệt và xuất bản"
                           >
@@ -520,7 +514,7 @@ const PostManagement = () => {
                           <Button
                             variant="danger"
                             size="sm"
-                            className="me-2 rounded"
+                            className="rounded"
                             onClick={() => handleUpdateStatus(post.id, 'REJECTED')}
                             title="Từ chối"
                           >
@@ -532,7 +526,7 @@ const PostManagement = () => {
                         <Button
                           variant={post.status === 'PUBLISHED' ? 'secondary' : 'success'}
                           size="sm"
-                          className="me-2 rounded"
+                          className="rounded"
                           onClick={() =>
                             handleUpdateStatus(post.id, post.status === 'PUBLISHED' ? 'HIDDEN' : 'PUBLISHED')
                           }
@@ -606,7 +600,14 @@ const PostManagement = () => {
                 <Form.Control type="file" accept="image/*" onChange={handleImageChange} />
                 {previewImage ? (
                   <div className="mt-3">
-                    <img src={previewImage} alt="Preview" className="max-w-full max-h-48 object-contain" onError={(e) => { e.target.src = 'https://via.placeholder.com/300x200?text=No+Image'; }} />
+                    <img
+                      src={previewImage}
+                      alt="Preview"
+                      className="max-w-full max-h-48 object-contain"
+                      onError={(e) => {
+                        e.target.src = 'https://via.placeholder.com/300x200?text=No+Image';
+                      }}
+                    />
                   </div>
                 ) : null}
               </Form.Group>
@@ -632,7 +633,7 @@ const PostManagement = () => {
                 </Form.Select>
               </Form.Group>
 
-              <div className="d-flex justify-end">
+              <div className="d-flex justify-content-end">
                 <Button variant="secondary" onClick={handleCloseModal} className="me-2">
                   Đóng
                 </Button>

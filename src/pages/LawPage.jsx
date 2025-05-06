@@ -5,7 +5,6 @@ import axios from 'axios';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import ErrorBoundary from '../components/ErrorBoundary';
-import '../assets/css/WorldPage.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const API_URL_ARTICLE_FILTER = `${API_BASE_URL}/article/api/v1/Article/filter`;
@@ -13,7 +12,7 @@ const API_URL_CATEGORY_FILTER = `${API_BASE_URL}/article/api/v1/Category/filter`
 
 const ITEMS_PER_PAGE = 9;
 
-const WorldPage = () => {
+const LawPage = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -22,7 +21,7 @@ const WorldPage = () => {
   const [error, setError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
-  const topicId = 'e967a251-8d89-49d7-9373-d54f6f85bb25';
+  const topicId = '6117641c-b824-4b91-b0a3-e9e48f1fce8f'; // topicId cho Pháp luật
   const token = localStorage.getItem('token') || '';
 
   const fetchCategories = async () => {
@@ -30,7 +29,7 @@ const WorldPage = () => {
       setLoading(true);
       const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
       const response = await axios.get(API_URL_CATEGORY_FILTER, {
-        params: { pageNumber: 1, pageSize: 100 },
+        params: { pageNumber: 1, pageSize: 15 },
         ...config,
       });
       console.log('Phản hồi danh mục:', response.data);
@@ -145,7 +144,7 @@ const WorldPage = () => {
       <Container fluid className="p-0">
         <Header />
         <Container className="my-5">
-          <h2 className="mb-4">Thế giới</h2>
+          <h2 className="mb-4">Pháp luật</h2>
           <div className="category-tabs mb-4">
             <Row>
               <Col>
@@ -297,4 +296,4 @@ const WorldPage = () => {
   );
 };
 
-export default WorldPage;
+export default LawPage;

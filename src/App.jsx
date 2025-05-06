@@ -4,26 +4,28 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import NewsDetailPage from './components/NewsDetailPage';
 import HomePage from './pages/HomePage';
 import WorldPage from './pages/WorldPage';
-import 'bootstrap-icons/font/bootstrap-icons.css';
 import BusinessPage from './pages/BusinessPage';
 import SportsPage from './pages/SportsPage';
 import HealthPage from './pages/HealthPage';
 import EntertainmentPage from './pages/EntertainmentPage';
+import RealEstatePage from './pages/RealEstatePage'; // Import mới
+import LawPage from './pages/LawPage'; // Import mới
 import UserProfile from './components/UserProfile';
 import MatchSchedulePage from './pages/MatchSchedulePage';
-import PostManagement from '../src/components/PostManagement';
+import PostManagement from './components/PostManagement';
 import WritePost from './components/WritePost';
 import AccountManagement from './components/AccountManagement';
 import SearchResultsPage from './components/SearchResultsPage';
 import EditorArticles from './components/EditorArticles';
 import ContentManagement from './components/ContentManagement';
-import OverviewStats from './components/OverviewStats';
-import ArticleStats from './components/ArticleStats';
+import ComprehensiveStatistics from './components/ComprehensiveStatistics';
 import PostHistory from './components/PostHistory';
 import AdStats from './components/AdStats';
 import AdBannerManagement from './components/AdBannerManagement';
 import SavedArticlesPage from './components/SavedArticlesPage';
+import CategoryFilter from './components/CategoryFilter';
 import ProtectedRoute from './components/ProtectedRoute';
+import 'bootstrap-icons/font/bootstrap-icons.css';
 
 // Ánh xạ giữa route và component
 const topicMapping = {
@@ -32,6 +34,8 @@ const topicMapping = {
   'kinh-doanh': BusinessPage,
   'suc-khoe': HealthPage,
   'giai-tri': EntertainmentPage,
+  'bat-dong-san': RealEstatePage, // Thêm route cho Bất động sản
+  'phap-luat': LawPage, // Thêm route cho Pháp luật
 };
 
 const App = () => {
@@ -46,9 +50,12 @@ const App = () => {
           <Route path="/giai-tri/:id" element={<NewsDetailPage />} />
           <Route path="/the-thao/:id" element={<NewsDetailPage />} />
           <Route path="/kinh-doanh/:id" element={<NewsDetailPage />} />
+          <Route path="/bat-dong-san/:id" element={<NewsDetailPage />} /> {/* Thêm route chi tiết cho Bất động sản */}
+          <Route path="/phap-luat/:id" element={<NewsDetailPage />} /> {/* Thêm route chi tiết cho Pháp luật */}
           <Route path="/match-schedule" element={<MatchSchedulePage />} />
           <Route path="/search" element={<SearchResultsPage />} />
           <Route path="/editor/:editorId/articles" element={<EditorArticles />} />
+          <Route path="/category-filter" element={<CategoryFilter />} />
 
           {/* Route động cho các chủ đề từ topicMapping */}
           {Object.keys(topicMapping).map((path) => (
@@ -118,18 +125,10 @@ const App = () => {
             }
           />
           <Route
-            path="/overview-stats"
+            path="/comprehensive-stats"
             element={
               <ProtectedRoute allowedRoles={[3]}>
-                <OverviewStats />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/article-stats"
-            element={
-              <ProtectedRoute allowedRoles={[3]}>
-                <ArticleStats />
+                <ComprehensiveStatistics />
               </ProtectedRoute>
             }
           />

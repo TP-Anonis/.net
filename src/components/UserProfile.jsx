@@ -9,8 +9,7 @@ import '../assets/css/UserProfile.css';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
-const API_URL_PROFILE = 'http://localhost:8000/auth/api/v1/User/profile';
-const API_URL_USERS = 'http://localhost:8000/auth/api/v1/User';
+const API_URL_GET_DETAILS = 'http://localhost:8000/auth/api/v1/User/Get-details-by-account-id';
 
 const UserProfile = () => {
   const navigate = useNavigate();
@@ -37,91 +36,66 @@ const UserProfile = () => {
   const [loading, setLoading] = useState(false);
   const [passwordStep, setPasswordStep] = useState(1);
 
-  // Lấy token từ localStorage
+  // Lấy token và userAccountId từ localStorage
   const token = localStorage.getItem('token') || '';
+  const userAccountId = localStorage.getItem('userAccountId') || '';
 
-  // Hàm giải mã token để lấy email
-  const getEmailFromToken = () => {
-    try {
-      const decoded = jwtDecode(token);
-      return decoded.email || 'tanphuoc058@gmail.com'; // Fallback mặc định
-    } catch (e) {
-      console.error('Lỗi giải mã token:', e);
-      return 'tanphuoc058@gmail.com'; // Fallback mặc định
-    }
-  };
-
-  // Kiểm tra token
-  const checkToken = () => {
+  // Kiểm tra token và userAccountId
+  const checkTokenAndId = () => {
     if (!token) {
       setError('Token xác thực không tồn tại. Vui lòng đăng nhập lại.');
       console.log('Token không tồn tại trong localStorage.');
       return false;
     }
+    if (!userAccountId) {
+      setError('Không tìm thấy userAccountId. Vui lòng đăng nhập lại.');
+      console.log('userAccountId không tồn tại trong localStorage.');
+      return false;
+    }
     console.log('Token được sử dụng:', token);
+    console.log('userAccountId được sử dụng:', userAccountId);
     return true;
   };
 
-  // Fetch dữ liệu người dùng
   useEffect(() => {
     const fetchUserProfile = async () => {
-      if (!checkToken()) return;
+      if (!checkTokenAndId()) return;
 
       setLoading(true);
       try {
-        // Bước 1: Lấy danh sách người dùng
-        const userListResponse = await axios.get(API_URL_USERS, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+        // Gọi API Get-details-by-account-id với userAccountId từ localStorage
+        const detailsResponse = await axios.get(`${API_URL_GET_DETAILS}?id=${userAccountId}`, {
+          headers: { Authorization: `Bearer ${token}` },
         });
+        console.log('Phản hồi thông tin chi tiết:', detailsResponse.data);
 
-        console.log('Danh sách người dùng:', userListResponse.data);
-
-        const users = userListResponse.data.data || [];
-        if (!users.length) {
-          throw new Error('Không tìm thấy danh sách người dùng.');
+        const userData = detailsResponse.data || {};
+        if (!userData.userAccountId) {
+          throw new Error('Phản hồi API không chứa thông tin người dùng hợp lệ.');
         }
 
-        // Lấy email từ token
-        const currentUserEmail = getEmailFromToken();
-        console.log('Email từ token:', currentUserEmail);
+        // Lấy email từ token để đảm bảo tính bảo mật
+        const decoded = jwtDecode(token);
+        const email = decoded.unique_name || decoded.email || '';
 
-        // Tìm người dùng hiện tại
-        const currentUser = users.find((u) => u.email === currentUserEmail);
-        if (!currentUser) {
-          throw new Error('Không tìm thấy người dùng hiện tại trong danh sách.');
-        }
+        // Cập nhật dữ liệu người dùng
+        const finalUserData = {
+          ...userData,
+          email: email || userData.email || '',
+        };
 
-        const userAccountId = currentUser.id;
-        console.log('userAccountId:', userAccountId);
-
-        // Bước 2: Lấy thông tin cá nhân
-        const profileResponse = await axios.get(`${API_URL_PROFILE}?accountId=${userAccountId}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        console.log('Phản hồi hồ sơ người dùng:', profileResponse.data);
-
-        const userData = profileResponse.data;
-        if (!userData) {
-          throw new Error('API không trả về dữ liệu người dùng.');
-        }
-
-        setUser(userData);
+        setUser(finalUserData);
         setFormData({
           fullName: userData.fullName || '',
-          email: userData.email || '',
+          email: email || userData.email || '',
           sex: userData.sex || '',
           birthday: userData.birthday ? userData.birthday.split('T')[0] : '',
         });
-        setPasswordData((prev) => ({ ...prev, email: userData.email || '' }));
+        setPasswordData((prev) => ({ ...prev, email: email || userData.email || '' }));
       } catch (error) {
         const errorMessage = error.response?.data?.message || error.message || 'Lỗi không xác định';
         setError('Lấy thông tin người dùng thất bại: ' + errorMessage);
-        console.error('Lỗi khi lấy hồ sơ người dùng:', error.response?.data || error.message);
+        console.error('Lỗi khi lấy thông tin người dùng:', error.response?.data || error.message);
       } finally {
         setLoading(false);
       }

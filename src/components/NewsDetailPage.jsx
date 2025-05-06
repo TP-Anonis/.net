@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Container, Row, Col, Form, Button, Card, Dropdown, Alert } from 'react-bootstrap';
+import { Container, Row, Col, Form, Button, Card, Dropdown, Alert, Spinner } from 'react-bootstrap';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
 import Header from '../components/Header';
@@ -357,15 +358,61 @@ const NewsDetailPage = () => {
   const [saveSuccess, setSaveSuccess] = useState('');
   const [userMapping, setUserMapping] = useState(JSON.parse(localStorage.getItem('userMapping')) || {});
   const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const [relatedArticles, setRelatedArticles] = useState([]);
   const token = localStorage.getItem('token') || '';
   const userRole = user?.roleId || null;
   const commentSectionRef = useRef(null);
+  const [deleting, setDeleting] = useState(false);
 
   const getAbsoluteThumbnailUrl = (thumbnail) => {
     if (!thumbnail) return 'https://placehold.co/400x300?text=Image+Not+Found';
     return thumbnail.startsWith('/article/uploads/')
       ? `${API_BASE_URL}${thumbnail}`
       : `${API_BASE_URL}/article/uploads/${thumbnail}`;
+  };
+
+  const checkSaveStatus = async () => {
+    if (!isLoggedIn || !token) {
+      return;
+    }
+
+    try {
+      const response = await axios.get(`${API_URL_ARTICLE_STORAGE}/check`, {
+        params: { articleId: id },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.data.statusCode === 200) {
+        setIsSaved(response.data.data);
+      }
+    } catch (error) {
+      console.error('Lỗi khi kiểm tra trạng thái lưu:', error.response?.data?.message || error.message);
+    }
+  };
+
+  const fetchRelatedArticles = async () => {
+    if (!article?.categoryName) return;
+
+    try {
+      const response = await axios.get(`${API_URL_ARTICLE_DETAIL}/filter`, {
+        params: {
+          categoryName: article.categoryName,
+          pageNumber: 1,
+          pageSize: 3,
+          excludeId: id,
+        },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      const relatedData = response.data?.data?.items || [];
+      setRelatedArticles(relatedData.map(item => ({
+        id: item.id,
+        title: item.title || 'Tiêu đề không có',
+        thumbnail: item.thumbnail || '',
+      })));
+    } catch (error) {
+      console.error('Lỗi khi lấy bài viết liên quan:', error.response?.data?.message || error.message);
+    }
   };
 
   useEffect(() => {
@@ -401,67 +448,49 @@ const NewsDetailPage = () => {
   }, [comments, token, commentsLoaded]);
 
   useEffect(() => {
-    const checkSaveStatus = async () => {
-      if (!isLoggedIn || !token) {
-        return;
-      }
-
-      try {
-        const response = await axios.get(`${API_URL_ARTICLE_STORAGE}/check`, {
-          params: { articleId: id },
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (response.data.statusCode === 200) {
-          setIsSaved(response.data.data);
-        }
-      } catch (error) {
-        console.error('Lỗi khi kiểm tra trạng thái lưu:', error.response?.data?.message || error.message);
-      }
-    };
-
     checkSaveStatus();
-  }, [id, token, isLoggedIn]);
+    if (article) fetchRelatedArticles();
+  }, [id, token, isLoggedIn, article]);
 
   useEffect(() => {
     const fetchArticleDetail = async () => {
-      // Kiểm tra cache
-      const cachedArticle = JSON.parse(localStorage.getItem(`article-${id}`));
-      if (cachedArticle && cachedArticle.id === id) {
-        setArticle(cachedArticle);
-        setLoading(false);
-        return;
-      }
-
-      // Sử dụng dữ liệu từ state nếu có
-      if (state?.article && state.article.id === id) {
-        setArticle(state.article);
-        localStorage.setItem(`article-${id}`, JSON.stringify(state.article));
-        setLoading(false);
-        return;
-      }
-
+      setLoading(true);
       try {
-        setLoading(true);
         const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
         const response = await axios.get(`${API_URL_ARTICLE_DETAIL}/${id}`, config);
 
         const articleData = response.data?.data;
         if (articleData) {
+          if (!articleData.title || !articleData.content) {
+            setError('Bài viết không đầy đủ thông tin (thiếu tiêu đề hoặc nội dung).');
+            setLoading(false);
+            return;
+          }
+
           const formattedArticle = {
             id: articleData.id,
             title: articleData.title || 'Tiêu đề không có',
             thumbnail: articleData.thumbnail || '',
             content: articleData.content || '<p>Nội dung không có</p>',
-            createAt: articleData.createAt || new Date().toISOString(),
+            createAt: articleData.createAt || null,
             categoryName: articleData.category?.name || 'Chưa phân loại',
-            author: articleData.userDetails?.fullName || 'Chưa xác định',
-            userAccountEmail: articleData.userAccountEmail || user?.email || 'Chưa xác định',
-            images: [],
-            video: null,
+            author: articleData.userDetails?.fullName || 'Ẩn danh',
+            userAccountEmail: articleData.userAccountEmail || 'Không có thông tin',
+            images: articleData.images || [],
+            video: articleData.video || null,
           };
           setArticle(formattedArticle);
-          localStorage.setItem(`article-${id}`, JSON.stringify(formattedArticle));
+
+          try {
+            const articleToCache = {
+              id: formattedArticle.id,
+              title: formattedArticle.title,
+              thumbnail: formattedArticle.thumbnail,
+            };
+            localStorage.setItem(`article-${id}`, JSON.stringify(articleToCache));
+          } catch (error) {
+            console.error('Lỗi khi lưu cache vào localStorage:', error.message);
+          }
         } else {
           setError('Không tìm thấy bài viết.');
         }
@@ -470,7 +499,7 @@ const NewsDetailPage = () => {
           setError('Không tìm thấy bài viết.');
         } else {
           console.error('Lỗi khi lấy chi tiết bài viết:', error.response?.data?.message || error.message);
-          setError('Không thể tải bài viết.');
+          setError('Không thể tải bài viết. Vui lòng thử lại sau.');
         }
       } finally {
         setLoading(false);
@@ -478,7 +507,7 @@ const NewsDetailPage = () => {
     };
 
     fetchArticleDetail();
-  }, [id, token, user?.email, state]);
+  }, [id, token]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -540,6 +569,8 @@ const NewsDetailPage = () => {
   const handleSaveArticle = async () => {
     if (!isLoggedIn || !token) {
       console.log('Người dùng chưa đăng nhập, không thể lưu bài viết.');
+      setSaveError('Vui lòng đăng nhập để lưu bài viết.');
+      setTimeout(() => setSaveError(''), 3000);
       return;
     }
 
@@ -562,17 +593,45 @@ const NewsDetailPage = () => {
       }
     } catch (error) {
       console.error('Lỗi khi lưu bài viết:', error.response?.data?.message || error.message);
+      setSaveError('Lưu bài viết thất bại: ' + (error.response?.data?.message || error.message));
+      setTimeout(() => setSaveError(''), 3000);
     }
   };
 
   const handleUnsaveArticle = async () => {
     if (!isLoggedIn || !token) {
       console.log('Người dùng chưa đăng nhập, không thể hủy lưu bài viết.');
+      setSaveError('Vui lòng đăng nhập để hủy lưu bài viết.');
+      setTimeout(() => setSaveError(''), 3000);
       return;
     }
 
+    setDeleting(true);
+    setSaveError('');
+    setSaveSuccess('');
+
     try {
-      const response = await axios.delete(`${API_URL_ARTICLE_STORAGE}/${id}`, {
+      const storageResponse = await axios.get(API_URL_ARTICLE_STORAGE, {
+        headers: { Authorization: `Bearer ${token}`, Accept: '*/*' },
+        params: { pageNumber: 1, pageSize: 10 },
+      });
+
+      const storageItems = storageResponse.data?.data?.items || [];
+      const storageItem = storageItems.find((item) => item.article.id === id);
+
+      if (!storageItem) {
+        setIsSaved(false);
+        setSaveSuccess('Bài viết không có trong danh sách đã lưu.');
+        setTimeout(() => setSaveSuccess(''), 3000);
+        setDeleting(false);
+        return;
+      }
+
+      const storageId = storageItem.id;
+
+      setIsSaved(false);
+
+      const response = await axios.delete(`${API_URL_ARTICLE_STORAGE}/${storageId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: '*/*',
@@ -580,13 +639,41 @@ const NewsDetailPage = () => {
         },
       });
 
-      if (response.data.statusCode === 200) {
-        setIsSaved(false);
+      if (response.data.statusCode === 200 || response.data.statusCode === 404) {
         setSaveSuccess('Hủy lưu bài viết thành công!');
         setTimeout(() => setSaveSuccess(''), 3000);
+        await checkSaveStatus();
+      } else {
+        setSaveError('Hủy lưu bài viết thất bại: ' + (response.data.message || 'Lỗi không xác định'));
+        setTimeout(() => setSaveError(''), 3000);
+        await checkSaveStatus();
       }
     } catch (error) {
-      console.error('Lỗi khi hủy lưu bài viết:', error.response?.data?.message || error.message);
+      console.error('Lỗi khi hủy lưu bài viết:', error.response || error.message);
+      if (error.response) {
+        if (error.response.status === 401) {
+          setSaveError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+          navigate('/login');
+        } else if (error.response.status === 404) {
+          setSaveSuccess('Bài viết đã được xóa trước đó.');
+          setTimeout(() => setSaveSuccess(''), 3000);
+          await checkSaveStatus();
+        } else {
+          setSaveError(
+            `Hủy lưu bài viết thất bại (Mã ${error.response.status}): ${
+              error.response.data?.message || error.message
+            }`
+          );
+          setTimeout(() => setSaveError(''), 3000);
+          await checkSaveStatus();
+        }
+      } else {
+        setSaveError('Lỗi kết nối: Không thể kết nối đến server. Vui lòng kiểm tra mạng.');
+        setTimeout(() => setSaveError(''), 3000);
+        await checkSaveStatus();
+      }
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -808,18 +895,30 @@ const NewsDetailPage = () => {
             <h1 className="mb-3">{article.title}</h1>
             <div className="article-meta mb-4">
               <span className="text-muted">
-                Đăng ngày: {new Date(article.createAt).toLocaleString()} | <strong>Tác giả:</strong> {article.author}
+                Đăng ngày: {article.createAt ? new Date(article.createAt).toLocaleString() : 'Không có thông tin'} |{' '}
+                <strong>Tác giả:</strong> {article.author}
               </span>
             </div>
             {isLoggedIn && (
               <div className="mb-4">
-                {saveError && <Alert variant="danger">{saveError}</Alert>}
-                {saveSuccess && <Alert variant="success">{saveSuccess}</Alert>}
+                {saveError && (
+                  <Alert variant="danger" onClose={() => setSaveError('')} dismissible>
+                    {saveError}
+                  </Alert>
+                )}
+                {saveSuccess && (
+                  <Alert variant="success" onClose={() => setSaveSuccess('')} dismissible>
+                    {saveSuccess}
+                  </Alert>
+                )}
                 <Button
                   variant={isSaved ? 'outline-danger' : 'outline-primary'}
                   onClick={isSaved ? handleUnsaveArticle : handleSaveArticle}
+                  disabled={deleting}
                 >
-                  {isSaved ? (
+                  {deleting ? (
+                    <Spinner as="span" animation="border" size="sm" />
+                  ) : isSaved ? (
                     <>
                       <i className="bi bi-bookmark-fill me-1"></i> Hủy lưu
                     </>
@@ -837,9 +936,7 @@ const NewsDetailPage = () => {
               alt={article.title}
               className="img-fluid mb-4"
               style={{ width: '100%', height: 'auto', maxHeight: '400px', objectFit: 'cover' }}
-              onError={(e) => {
-                e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found';
-              }}
+              onError={(e) => { e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found'; }}
               loading="lazy"
             />
             <div className="article-content">
@@ -873,9 +970,7 @@ const NewsDetailPage = () => {
                           alt={`Hình ảnh minh họa ${index + 1}`}
                           className="img-fluid"
                           style={{ width: '100%', height: 'auto', borderRadius: '8px' }}
-                          onError={(e) => {
-                            e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found';
-                          }}
+                          onError={(e) => { e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found'; }}
                           loading="lazy"
                         />
                       </Col>
@@ -920,6 +1015,45 @@ const NewsDetailPage = () => {
                 isLoggedIn={isLoggedIn}
               />
             </div>
+          </Col>
+          <Col md={4}>
+            <Card className="mb-4">
+              <Card.Body>
+                <h5 className="mb-3">Bài viết liên quan</h5>
+                {relatedArticles.length > 0 ? (
+                  relatedArticles.map((related) => (
+                    <div key={related.id} className="mb-2">
+                      <a href={`/news/${related.id}`} className="text-decoration-none text-dark">
+                        {related.title}
+                      </a>
+                      <img
+                        src={getAbsoluteThumbnailUrl(related.thumbnail)}
+                        alt={related.title}
+                        className="img-fluid mt-2"
+                        style={{ width: '100%', height: 'auto', borderRadius: '8px' }}
+                        onError={(e) => { e.target.src = 'https://placehold.co/400x300?text=Image+Not+Found'; }}
+                        loading="lazy"
+                      />
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-muted">Không có bài viết liên quan.</p>
+                )}
+              </Card.Body>
+            </Card>
+            <Card>
+              <Card.Body>
+                <h5 className="mb-3">Quảng cáo</h5>
+                <div className="text-center">
+                  <img
+                    src="https://placehold.co/300x250?text=Quảng+cáo"
+                    alt="Quảng cáo"
+                    className="img-fluid"
+                    style={{ borderRadius: '8px' }}
+                  />
+                </div>
+              </Card.Body>
+            </Card>
           </Col>
         </Row>
         <Button variant="secondary" className="mt-4" onClick={() => navigate(-1)}>

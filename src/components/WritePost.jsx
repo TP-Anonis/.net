@@ -22,9 +22,10 @@ const WritePost = () => {
     title: '',
     thumbnail: '',
     content: '',
-    status: '', // Để tự động set trạng thái dựa trên role
+    status: 'PENDING', // Mặc định là PENDING cho Editor
     isShowAuthor: true,
     categoryId: '',
+    userAccountId: '',
   });
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState([]);
@@ -88,10 +89,10 @@ const WritePost = () => {
     };
     fetchCategories();
 
-    // Set trạng thái mặc định dựa trên role
     setFormData((prev) => ({
       ...prev,
-      status: user.roleId === 3 ? 'PUBLISHED' : 'DRAFT',
+      status: user.roleId === 3 ? 'PUBLISHED' : 'PENDING',
+      userAccountId: user.roleId === 3 ? '' : userAccountId,
     }));
   }, [user]);
 
@@ -129,12 +130,8 @@ const WritePost = () => {
           'Content-Type': 'multipart/form-data',
         },
       });
-      console.log('Phản hồi từ API upload:', response.data);
       const fileNames = response.data?.data;
-      if (!fileNames) {
-        throw new Error('API không trả về dữ liệu file hợp lệ (response.data.data không tồn tại).');
-      }
-      if (!Array.isArray(fileNames) || fileNames.length === 0) {
+      if (!fileNames || !Array.isArray(fileNames) || fileNames.length === 0) {
         throw new Error('API không trả về mảng fileNames hợp lệ.');
       }
       const relativeImageUrl = fileNames[0].startsWith('/article/uploads/')
@@ -144,7 +141,6 @@ const WritePost = () => {
       setError('');
     } catch (error) {
       setError('Tải lên hình ảnh thất bại: ' + (error.response?.data?.message || error.message));
-      console.error('Lỗi upload:', error.response?.data || error.message);
     } finally {
       setLoading(false);
     }
@@ -177,9 +173,8 @@ const WritePost = () => {
       return;
     }
 
-    // Kiểm tra trạng thái cho Editor
-    if (user.roleId === 2 && !['DRAFT', 'PENDING'].includes(formData.status)) {
-      setError('Editor chỉ được tạo bài với trạng thái Bản nháp (DRAFT) hoặc Chờ duyệt (PENDING)!');
+    if (user.roleId === 2 && formData.status === 'PUBLISHED') {
+      setError('Editor không được tạo bài với trạng thái Đã xuất bản!');
       setLoading(false);
       return;
     }
@@ -192,10 +187,8 @@ const WritePost = () => {
         status: formData.status,
         isShowAuthor: formData.isShowAuthor,
         categoryId: formData.categoryId,
-        userAccountId: user.roleId === 3 ? '11111111-1111-1111-1111-111111111111' : userAccountId,
+        userAccountId: formData.userAccountId || userAccountId,
       };
-
-      console.log('articleData:', articleData);
 
       const apiUrl = user.roleId === 3 ? API_URL_ARTICLE_ADMIN : API_URL_ARTICLE_EDITOR;
 
@@ -206,26 +199,24 @@ const WritePost = () => {
         },
       });
 
-      console.log('Phản hồi từ API:', response.data);
-
-      if (response.status !== 201) {
+      if (response.status === 201) {
+        setSuccess('Bài viết đã được tạo thành công!');
+        setFormData({
+          title: '',
+          thumbnail: '',
+          content: '',
+          status: user.roleId === 3 ? 'PUBLISHED' : 'PENDING',
+          isShowAuthor: true,
+          categoryId: '',
+          userAccountId: user.roleId === 3 ? '' : userAccountId,
+        });
+        // Điều hướng về PostHistory sau khi tạo thành công
+        navigate('/post-history');
+      } else {
         throw new Error('API không trả về mã trạng thái 201!');
       }
-
-      setSuccess('Bài viết đã được tạo thành công!');
-      setFormData({
-        title: '',
-        thumbnail: '',
-        content: '',
-        status: user.roleId === 3 ? 'PUBLISHED' : 'DRAFT',
-        isShowAuthor: true,
-        categoryId: '',
-      });
     } catch (error) {
-      const errorMessage = error.response
-        ? `Lỗi ${error.response.status}: ${error.response.data?.message || error.message}`
-        : error.message || 'Tạo bài viết thất bại!';
-      setError(errorMessage);
+      setError(`Tạo bài viết thất bại: ${error.response?.data?.message || error.message}`);
     } finally {
       setLoading(false);
     }
@@ -285,12 +276,11 @@ const WritePost = () => {
               {user.roleId === 2 ? (
                 <>
                   <option value="DRAFT">Bản nháp</option>
-                  <option value="PENDING">Chờ duyệt</option>
+                  <option value="PENDING">Gửi ngay và chờ duyệt</option>
                 </>
               ) : (
                 <>
                   <option value="PUBLISHED">Đã xuất bản</option>
-                  <option value="DRAFT">Bản nháp</option>
                   <option value="PENDING">Chờ duyệt</option>
                   <option value="REJECTED">Bị từ chối</option>
                   <option value="HIDDEN">Đã ẩn</option>
@@ -319,6 +309,19 @@ const WritePost = () => {
               ))}
             </Form.Select>
           </Form.Group>
+
+          {user.roleId === 3 && (
+            <Form.Group className="mb-3">
+              <Form.Label>Tác giả (UserAccountId)</Form.Label>
+              <Form.Control
+                type="text"
+                name="userAccountId"
+                value={formData.userAccountId}
+                onChange={handleChange}
+                placeholder="Nhập ID tác giả"
+              />
+            </Form.Group>
+          )}
 
           <Button type="submit" variant="primary" disabled={loading}>
             Tạo bài viết

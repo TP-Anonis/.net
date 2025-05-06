@@ -41,7 +41,6 @@ const Header = () => {
   const fetchTopics = async () => {
     try {
       const token = localStorage.getItem('token');
-      // Bỏ qua kiểm tra token, gọi API với hoặc không có token
       const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
       const response = await axios.get(API_URL_TOPIC_FILTER, config);
 
@@ -51,23 +50,20 @@ const Header = () => {
       );
       setTopics(filteredTopics);
     } catch (error) {
-      console.error('Error fetching topics:', error.response?.data || error.message);
-      // Không hiển thị lỗi hoặc modal đăng nhập, chỉ log để debug
+      console.error('Lỗi khi lấy danh sách chủ đề:', error.response?.data || error.message);
     }
   };
 
   const fetchCategories = async () => {
     try {
       const token = localStorage.getItem('token');
-      // Bỏ qua kiểm tra token, gọi API với hoặc không có token
       const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
       const response = await axios.get(API_URL_CATEGORY_FILTER, config);
 
       const categoryData = response.data?.data?.items || [];
       setCategories(categoryData);
     } catch (error) {
-      console.error('Error fetching categories:', error.response?.data || error.message);
-      // Không hiển thị lỗi hoặc modal đăng nhập, chỉ log để debug
+      console.error('Lỗi khi lấy danh sách danh mục:', error.response?.data || error.message);
     }
   };
 
@@ -96,7 +92,7 @@ const Header = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('userAccountId');
     alert('Đăng xuất thành công!');
-    navigate('/'); // Chuyển về trang chủ sau khi đăng xuất
+    navigate('/');
   };
 
   const handleSearch = (e) => {
@@ -163,7 +159,7 @@ const Header = () => {
                       <FaPen className="me-2" /> Viết Bài Mới
                     </Dropdown.Item>
                     <Dropdown.Item as={Link} to="/post-history">
-                      <FaHistory className="me-2" /> Lịch sử đăng tin
+                      <FaHistory className="me-2" /> Quản lý tin đăng
                     </Dropdown.Item>
                   </>
                 )}
@@ -183,12 +179,6 @@ const Header = () => {
                     </Dropdown.Item>
                     <Dropdown.Item as={Link} to="/article-stats">
                       <FaNewspaper className="me-2" /> Xem thống kê bài báo
-                    </Dropdown.Item>
-                    <Dropdown.Item as={Link} to="/ad-stats">
-                      <FaChartBar className="me-2" /> Thống kê quảng cáo
-                    </Dropdown.Item>
-                    <Dropdown.Item as={Link} to="/ad-banner-management">
-                      <FaNewspaper className="me-2" /> Quản lý banner quảng cáo
                     </Dropdown.Item>
                   </>
                 )}

@@ -5,6 +5,7 @@ import axios from 'axios';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { AuthContext } from '../context/AuthContext';
+import { jwtDecode } from 'jwt-decode';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const API_URL_ARTICLE_STORAGE = `${API_BASE_URL}/article/api/v1/ArticleStorage`;
@@ -15,84 +16,155 @@ const SavedArticlesPage = () => {
   const { user, isLoggedIn } = useContext(AuthContext);
   const [savedArticles, setSavedArticles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const token = localStorage.getItem('token') || '';
+  const currentUserAccountId = localStorage.getItem('userAccountId') || '';
 
-  useEffect(() => {
-    const fetchSavedArticles = async () => {
-      if (!isLoggedIn || !token) {
-        setError('Vui lòng đăng nhập để xem bài viết đã lưu.');
-        setLoading(false);
-        return;
+  // Kiểm tra token hợp lệ
+  const checkToken = () => {
+    if (!token) {
+      setError('Token không tồn tại. Vui lòng đăng nhập lại.');
+      navigate('/login');
+      return false;
+    }
+    try {
+      const decoded = jwtDecode(token);
+      const currentTime = Date.now() / 1000;
+      if (decoded.exp < currentTime) {
+        setError('Token đã hết hạn. Vui lòng đăng nhập lại.');
+        localStorage.removeItem('token');
+        navigate('/login');
+        return false;
       }
-
-      try {
-        setLoading(true);
-        const response = await axios.get(API_URL_ARTICLE_STORAGE, {
-          headers: { Authorization: `Bearer ${token}`, Accept: '*/*' },
-          params: { pageNumber: 1, pageSize: 10 },
-        });
-
-        if (response.data.statusCode === 200) {
-          const items = response.data.data.items || [];
-          if (items.length > 0) {
-            const articlesWithDetails = await Promise.all(
-              items.map(async (item) => {
-                const articleDetailResponse = await axios.get(`${API_URL_ARTICLE_DETAIL}/${item.article.id}`, {
-                  headers: { Authorization: `Bearer ${token}` },
-                });
-                const articleDetail = articleDetailResponse.data.data;
-                return {
-                  id: item.article.id,
-                  title: item.article.title || 'Tiêu đề không có',
-                  thumbnail: item.article.thumbnail || '',
-                  createAt: item.article.createAt || new Date().toISOString(),
-                  categoryName: articleDetail.category?.name || 'Chưa phân loại',
-                  author: articleDetail.userDetails?.fullName || 'Chưa xác định',
-                  isSaved: true,
-                };
-              })
-            );
-            setSavedArticles(articlesWithDetails);
-          } else {
-            setError('Không có bài viết nào trong danh sách.');
-          }
-        } else {
-          setError('Không thể lấy danh sách bài viết: ' + (response.data.message || 'Lỗi không xác định'));
-        }
-      } catch (error) {
-        console.error('Lỗi khi gọi API:', error);
-        if (error.response) {
-          if (error.response.status === 401) {
-            setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-          } else if (error.response.status === 403) {
-            setError('Bạn không có quyền truy cập danh sách bài viết.');
-          } else {
-            setError(
-              `Lỗi khi lấy danh sách bài viết (Mã ${error.response.status}): ${
-                error.response.data?.message || error.message
-              }`
-            );
-          }
-        } else {
-          setError('Lỗi kết nối: Không thể kết nối đến server. Vui lòng kiểm tra mạng.');
-        }
-      } finally {
-        setLoading(false);
+      // Đảm bảo currentUserAccountId khớp với token nếu token có userId
+      if (decoded.userId && decoded.userId !== currentUserAccountId) {
+        setError('Dữ liệu người dùng không khớp. Vui lòng đăng nhập lại.');
+        localStorage.removeItem('userAccountId');
+        navigate('/login');
+        return false;
       }
-    };
+      return true;
+    } catch (e) {
+      setError('Token không hợp lệ. Vui lòng đăng nhập lại.');
+      console.error('Lỗi giải mã token:', e);
+      navigate('/login');
+      return false;
+    }
+  };
 
-    fetchSavedArticles();
-  }, [token, navigate, isLoggedIn]);
-
-  const handleUnsaveArticle = async (articleId) => {
-    if (!isLoggedIn || !token) {
-      setError('Vui lòng đăng nhập để hủy lưu bài viết.');
+  const fetchSavedArticles = async () => {
+    if (!isLoggedIn || !checkToken() || !currentUserAccountId) {
+      setLoading(false);
       return;
     }
 
     try {
-      const response = await axios.delete(`${API_URL_ARTICLE_STORAGE}/${articleId}`, {
+      setLoading(true);
+      const response = await axios.get(API_URL_ARTICLE_STORAGE, {
+        headers: { Authorization: `Bearer ${token}`, Accept: '*/*' },
+        params: { pageNumber: 1, pageSize: 10 },
+      });
+
+      if (response.data.statusCode === 200) {
+        const items = response.data.data.items || [];
+        if (items.length === 0) {
+          setSavedArticles([]);
+          setError('Không có bài viết nào trong danh sách.');
+          return;
+        }
+
+        const articlesWithDetails = await Promise.all(
+          items.map(async (item) => {
+            try {
+              const articleDetailResponse = await axios.get(`${API_URL_ARTICLE_DETAIL}/${item.article.id}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              const articleDetail = articleDetailResponse.data.data;
+              return {
+                storageId: item.id,
+                id: item.article.id,
+                title: item.article.title || 'Tiêu đề không có',
+                thumbnail: item.article.thumbnail || '',
+                createAt: item.article.createAt || new Date().toISOString(),
+                categoryName: articleDetail.category?.name || 'Chưa phân loại',
+                author: articleDetail.userDetails?.fullName || 'Chưa xác định',
+                isSaved: true,
+                userAccountId: item.article.userAccountId, // Thêm userAccountId để lọc
+              };
+            } catch (detailError) {
+              if (detailError.response && detailError.response.status === 404) {
+                return {
+                  storageId: item.id,
+                  id: item.article.id,
+                  title: item.article.title || 'Tiêu đề không có',
+                  thumbnail: item.article.thumbnail || '',
+                  createAt: item.article.createAt || new Date().toISOString(),
+                  categoryName: 'Chưa phân loại',
+                  author: 'Chưa xác định',
+                  isSaved: true,
+                  userAccountId: item.article.userAccountId, // Thêm userAccountId để lọc
+                };
+              }
+              throw detailError;
+            }
+          })
+        );
+
+        // Lọc bài viết dựa trên userAccountId của người dùng hiện tại
+        const filteredArticles = articlesWithDetails.filter(
+          (article) => article.userAccountId === currentUserAccountId
+        );
+        setSavedArticles(filteredArticles);
+        if (filteredArticles.length === 0) {
+          setError('Không có bài viết nào trong danh sách của bạn.');
+        }
+      } else {
+        setSavedArticles([]);
+        setError('Không thể lấy danh sách bài viết: ' + (response.data.message || 'Lỗi không xác định'));
+      }
+    } catch (error) {
+      setSavedArticles([]);
+      if (error.response) {
+        if (error.response.status === 401) {
+          setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+          navigate('/login');
+        } else if (error.response.status === 403) {
+          setError('Bạn không có quyền truy cập danh sách bài viết.');
+        } else {
+          setError(
+            `Lỗi khi lấy danh sách bài viết (Mã ${error.response.status}): ${
+              error.response.data?.message || error.message
+            }`
+          );
+        }
+      } else {
+        setError('Lỗi kết nối: Không thể kết nối đến server. Vui lòng kiểm tra mạng.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSavedArticles();
+  }, [token, navigate, isLoggedIn, currentUserAccountId]);
+
+  const handleUnsaveArticle = async (storageId, articleId) => {
+    if (!isLoggedIn || !checkToken() || !currentUserAccountId) {
+      return;
+    }
+
+    setDeletingId(storageId);
+    setError('');
+    setSuccess('');
+
+    try {
+      const updatedArticles = savedArticles.filter((article) => article.storageId !== storageId);
+      setSavedArticles([...updatedArticles]);
+
+      const response = await axios.delete(`${API_URL_ARTICLE_STORAGE}/${storageId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: '*/*',
@@ -101,28 +173,35 @@ const SavedArticlesPage = () => {
       });
 
       if (response.data.statusCode === 200) {
-        setSavedArticles(savedArticles.filter((article) => article.id !== articleId));
-        setError('');
+        setSuccess('Đã hủy lưu bài viết thành công!');
       } else if (response.data.statusCode === 404) {
-        setError('Bài viết không tồn tại trong danh sách lưu trữ.');
+        setSuccess('Bài viết đã được hủy lưu trước đó.');
       } else {
         setError('Hủy lưu bài viết thất bại: ' + (response.data.message || 'Lỗi không xác định'));
+        await fetchSavedArticles();
       }
     } catch (error) {
-      console.error('Lỗi khi hủy lưu bài viết:', error.response || error.message);
+      setSavedArticles([]);
       if (error.response) {
         if (error.response.status === 401) {
           setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+          navigate('/login');
+        } else if (error.response.status === 404) {
+          setSuccess('Bài viết đã được hủy lưu trước đó.');
         } else {
           setError(
             `Hủy lưu bài viết thất bại (Mã ${error.response.status}): ${
               error.response.data?.message || error.message
             }`
           );
+          await fetchSavedArticles();
         }
       } else {
         setError('Lỗi kết nối: Không thể kết nối đến server. Vui lòng kiểm tra mạng.');
+        await fetchSavedArticles();
       }
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -139,19 +218,21 @@ const SavedArticlesPage = () => {
     );
   }
 
-  if (error) {
-    return (
-      <Container className="my-5">
-        <Alert variant="danger">{error}</Alert>
-      </Container>
-    );
-  }
-
   return (
     <Container fluid className="p-0">
       <Header />
       <Container className="my-5">
         <h2 className="mb-4">Bài viết đã lưu</h2>
+        {error && (
+          <Alert variant="danger" onClose={() => setError('')} dismissible>
+            {error}
+          </Alert>
+        )}
+        {success && (
+          <Alert variant="success" onClose={() => setSuccess('')} dismissible>
+            {success}
+          </Alert>
+        )}
         {savedArticles.length === 0 ? (
           <p className="text-center text-muted">Bạn chưa lưu bài viết nào.</p>
         ) : (
@@ -182,10 +263,11 @@ const SavedArticlesPage = () => {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleUnsaveArticle(article.id);
+                        handleUnsaveArticle(article.storageId, article.id);
                       }}
+                      disabled={deletingId === article.storageId}
                     >
-                      Hủy lưu
+                      {deletingId === article.storageId ? <Spinner as="span" animation="border" size="sm" /> : 'Hủy lưu'}
                     </Button>
                   </Card.Body>
                 </Card>

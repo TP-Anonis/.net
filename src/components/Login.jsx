@@ -4,6 +4,7 @@ import Register from './Register';
 import { AuthContext } from '../context/AuthContext';
 import { loginUser, requestResetPassword, resetPassword } from '../services/authApi';
 import { jwtDecode } from 'jwt-decode';
+import axios from 'axios';
 import '../assets/css/Login.css';
 
 const Login = ({ show = false, handleClose }) => {
@@ -41,28 +42,53 @@ const Login = ({ show = false, handleClose }) => {
       const decodedToken = jwtDecode(token);
       console.log('Decoded Token:', decodedToken);
       const email = decodedToken.unique_name || formData.email;
-      const userAccountId = decodedToken.jti || decodedToken.sub || "default-id";
       const role = decodedToken.role || decodedToken['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'];
 
-      if (userAccountId !== localStorage.getItem('userAccountId')) {
-        localStorage.setItem('userAccountId', userAccountId);
+      let correctUserAccountId = null;
+
+      // Lấy userId từ token (token trả về userId thay vì userAccountId)
+      if (decodedToken.userId) {
+        correctUserAccountId = decodedToken.userId;
+        console.log('Lấy userAccountId từ token (userId):', correctUserAccountId);
+      } else {
+        // Gọi API để lấy userAccountId nếu token không có userId
+        try {
+          const profileResponse = await axios.get(
+            `http://localhost:8000/auth/api/v1/User/Get-details-by-account-id?email=${email}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          console.log('Profile Response:', profileResponse.data);
+          if (profileResponse.data && profileResponse.data.userAccountId) {
+            correctUserAccountId = profileResponse.data.userAccountId;
+          } else {
+            throw new Error('Phản hồi API profile không chứa userAccountId');
+          }
+        } catch (profileError) {
+          console.error('Lỗi khi lấy profile:', profileError);
+          setError('Không thể lấy userAccountId. Vui lòng thử lại sau.');
+          return;
+        }
       }
 
       const userData = {
-        id: userAccountId,
-        username: decodedToken.unique_name || formData.email,
+        id: correctUserAccountId,
+        username: email,
         roleId: role === 'Admin' ? 3 : role === 'Editor' ? 2 : 1,
         createdAt: new Date(decodedToken.iat * 1000).toISOString(),
         status: 'active',
       };
 
+      console.log('UserData trước khi lưu:', userData);
       localStorage.setItem('token', token);
+      localStorage.setItem('userAccountId', correctUserAccountId);
+      console.log('userAccountId lưu vào localStorage:', localStorage.getItem('userAccountId'));
+      login(userData);
       setError('');
       alert('Đăng nhập thành công!');
-      login(userData);
       handleClose();
     } catch (err) {
       setError(err.message || 'Tài khoản hoặc mật khẩu không đúng!');
+      console.error('Lỗi đăng nhập:', err);
     }
   };
 
@@ -187,7 +213,10 @@ const Login = ({ show = false, handleClose }) => {
 
       <Modal
         show={showResetPassword}
-        onHide={() => { setShowResetPassword(false); setResetStep(1); }}
+        onHide={() => {
+          setShowResetPassword(false);
+          setResetStep(1);
+        }}
         centered
         dialogClassName="login-modal"
         size="xl"
@@ -206,8 +235,17 @@ const Login = ({ show = false, handleClose }) => {
             </Col>
             <Col md={7} className="login-right-section p-5">
               <div className="d-flex justify-content-between align-items-center mb-4">
-                <h3 className="modal-title">{resetStep === 1 ? 'Đặt lại mật khẩu' : 'Xác nhận OTP'}</h3>
-                <Button variant="link" className="p-0" onClick={() => { setShowResetPassword(false); setResetStep(1); }}>
+                <h3 className="modal-title">
+                  {resetStep === 1 ? 'Đặt lại mật khẩu' : 'Xác nhận OTP'}
+                </h3>
+                <Button
+                  variant="link"
+                  className="p-0"
+                  onClick={() => {
+                    setShowResetPassword(false);
+                    setResetStep(1);
+                  }}
+                >
                   <i className="bi bi-x-lg"></i>
                 </Button>
               </div>

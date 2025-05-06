@@ -9,9 +9,9 @@ import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 
 const API_URL_ARTICLE = 'http://localhost:8000/article/api/v1/Article';
-const API_URL_UPLOAD = 'http://localhost:5288/api/v1/Upload/images';
-const API_URL_CATEGORIES = 'http://localhost:5288/api/v1/Category/filter?pageNumber=1&pageSize=50';
-const BACKEND_URL = 'http://localhost:5288';
+const API_URL_UPLOAD = 'http://localhost:8000/article/api/v1/Upload/images';
+const API_URL_CATEGORIES = 'http://localhost:8000/article/api/v1/Category/filter?pageNumber=1&pageSize=50';
+const BACKEND_URL = 'http://localhost:8000';
 
 const PostManagement = () => {
   const { user } = useContext(AuthContext);
@@ -20,12 +20,11 @@ const PostManagement = () => {
   const [categories, setCategories] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
+  const [originalAuthorId, setOriginalAuthorId] = useState(null); // Lưu userAccountId ban đầu
   const [formData, setFormData] = useState({
     title: '',
     thumbnail: '',
     content: '',
-    status: 'DRAFT',
-    isShowAuthor: true,
     categoryId: '',
   });
   const [previewImage, setPreviewImage] = useState(null);
@@ -52,43 +51,31 @@ const PostManagement = () => {
   };
 
   const isAdmin = user?.roleId === 3;
-  const isEditor = user?.roleId === 2;
 
-  const fetchPosts = async (page = 1) => {
+  const fetchPosts = async (page = 1, tempFilters = filters) => {
     if (!checkToken()) return;
     try {
       setIsLoading(true);
-      let allPosts = [];
-      let currentPageToFetch = page;
-      let hasMore = true;
+      const queryParams = new URLSearchParams({
+        pageNumber: page,
+        pageSize,
+        status: tempFilters.status || '',
+        categoryId: tempFilters.categoryId || '',
+      }).toString();
 
-      while (allPosts.length < pageSize && hasMore) {
-        const queryParams = new URLSearchParams({
-          pageNumber: currentPageToFetch,
-          pageSize,
-          status: filters.status,
-          categoryId: filters.categoryId,
-        }).toString();
-        const response = await axios.get(`${API_URL_ARTICLE}/filter?${queryParams}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+      const response = await axios.get(`${API_URL_ARTICLE}/filter?${queryParams}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-        if (response.data.statusCode === 200) {
-          const fetchedPosts = response.data.data.items || [];
-          allPosts = [...allPosts, ...fetchedPosts];
-          setTotalPages(response.data.data.totalPages);
-          setCurrentPage(page);
-          hasMore = currentPageToFetch < response.data.data.totalPages;
-          currentPageToFetch += 1;
-        } else {
-          setError('Không thể lấy danh sách bài viết.');
-          setPosts([]);
-          break;
-        }
+      if (response.data.statusCode === 200) {
+        const fetchedPosts = response.data.data.items || [];
+        setPosts(fetchedPosts);
+        setTotalPages(response.data.data.totalPages || 1);
+        setCurrentPage(page);
+      } else {
+        setError('Không thể lấy danh sách bài viết.');
+        setPosts([]);
       }
-
-      // Cắt danh sách để chỉ hiển thị tối đa 10 bài
-      setPosts(allPosts.slice(0, pageSize));
     } catch (err) {
       setError('Có lỗi xảy ra khi lấy danh sách bài viết: ' + (err.response?.data?.message || err.message));
       setPosts([]);
@@ -111,7 +98,7 @@ const PostManagement = () => {
         });
         const categoryList = response.data?.data?.items || [];
         allCategories = [...allCategories, ...categoryList];
-        hasMore = page < response.data.data.totalPages;
+        hasMore = page < (response.data.data.totalPages || 1);
         page += 1;
       }
       setCategories(allCategories);
@@ -124,7 +111,7 @@ const PostManagement = () => {
   };
 
   useEffect(() => {
-    fetchPosts(currentPage);
+    fetchPosts(currentPage, filters);
     fetchCategories();
   }, [currentPage, filters]);
 
@@ -145,12 +132,11 @@ const PostManagement = () => {
   const handleCloseModal = () => {
     setShowModal(false);
     setSelectedPost(null);
+    setOriginalAuthorId(null); // Reset originalAuthorId
     setFormData({
       title: '',
       thumbnail: '',
       content: '',
-      status: 'DRAFT',
-      isShowAuthor: true,
       categoryId: '',
     });
     setPreviewImage(null);
@@ -160,22 +146,21 @@ const PostManagement = () => {
 
   const handleShowModal = (post) => {
     setSelectedPost(post);
+    setOriginalAuthorId(post.userDetails?.userAccountId || null); // Lưu userAccountId ban đầu
     setFormData({
       title: post.title || '',
       thumbnail: post.thumbnail || '',
       content: post.content || '',
-      status: post.status || 'DRAFT',
-      isShowAuthor: post.isShowAuthor ?? true,
       categoryId: post.category?.id || '',
     });
     setPreviewImage(post.thumbnail ? `${BACKEND_URL}${post.thumbnail}` : null);
+    console.log('Preview Image URL:', `${BACKEND_URL}${post.thumbnail}`);
     setShowModal(true);
   };
 
   const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    const newValue = type === 'checkbox' ? checked : value;
-    setFormData((prev) => ({ ...prev, [name]: newValue }));
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleFilterChange = (e) => {
@@ -184,22 +169,9 @@ const PostManagement = () => {
     setCurrentPage(1);
   };
 
-  const uploadImage = async (file) => {
-    if (!checkToken()) throw new Error('Token xác thực không tồn tại.');
-    if (!file) throw new Error('Không có file hình ảnh được chọn.');
-    const formData = new FormData();
-    formData.append('files', file);
-    try {
-      const response = await axios.post(API_URL_UPLOAD, formData, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const fileNames = response.data?.data;
-      if (!fileNames || !Array.isArray(fileNames) || fileNames.length === 0)
-        throw new Error('API không trả về danh sách file hợp lệ.');
-      return fileNames[0].startsWith('/uploads/') ? fileNames[0] : `/uploads/${fileNames[0]}`;
-    } catch (error) {
-      throw new Error('Upload hình ảnh thất bại: ' + (error.response?.data?.message || error.message));
-    }
+  const handleApplyFilters = () => {
+    setCurrentPage(1);
+    fetchPosts(1, filters);
   };
 
   const handleImageChange = async (e) => {
@@ -217,6 +189,7 @@ const PostManagement = () => {
       const imageUrl = await uploadImage(file);
       setFormData((prev) => ({ ...prev, thumbnail: imageUrl }));
       setPreviewImage(`${BACKEND_URL}${imageUrl}`);
+      console.log('Uploaded Image URL:', `${BACKEND_URL}${imageUrl}`);
     } catch (error) {
       setError(error.message);
     } finally {
@@ -224,9 +197,33 @@ const PostManagement = () => {
     }
   };
 
+  const uploadImage = async (file) => {
+    if (!checkToken()) throw new Error('Token xác thực không tồn tại.');
+    if (!file) throw new Error('Không có file hình ảnh được chọn.');
+    const formData = new FormData();
+    formData.append('files', file);
+    try {
+      const response = await axios.post(API_URL_UPLOAD, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      const fileName = response.data?.data?.[0] || response.data?.data;
+      if (!fileName || typeof fileName !== 'string') throw new Error('API không trả về tên file hợp lệ.');
+      console.log('FileName from API:', fileName);
+      return fileName;
+    } catch (error) {
+      throw new Error('Upload hình ảnh thất bại: ' + (error.response?.data?.message || error.message));
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
+    setSuccess('');
+
     if (!formData.title || !formData.content) {
       setError('Vui lòng nhập tiêu đề và nội dung!');
       setLoading(false);
@@ -241,6 +238,11 @@ const PostManagement = () => {
       setLoading(false);
       return;
     }
+    if (!user?.id) {
+      setError('Không tìm thấy userAccountId. Vui lòng đăng nhập lại.');
+      setLoading(false);
+      return;
+    }
 
     try {
       const articleData = {
@@ -248,11 +250,14 @@ const PostManagement = () => {
         title: formData.title,
         thumbnail: formData.thumbnail || '',
         content: formData.content,
-        isShowAuthor: formData.isShowAuthor,
         categoryId: formData.categoryId,
-        status: formData.status,
-        userAccountId: selectedPost?.userAccountId || user?.id,
       };
+
+      // Chỉ thêm userAccountId khi tạo mới (POST), không thêm khi chỉnh sửa (PUT)
+      if (!selectedPost) {
+        articleData.userAccountId = user.id; // Chỉ thêm khi tạo mới
+      }
+
       const url = `${API_URL_ARTICLE}/admin/${selectedPost?.id || ''}`;
       const method = selectedPost ? 'put' : 'post';
       const response = await axios[method](url, articleData, {
@@ -261,7 +266,9 @@ const PostManagement = () => {
 
       if (response.data.statusCode === 200 || response.data.statusCode === 201) {
         setSuccess(`Đã ${selectedPost ? 'cập nhật' : 'tạo'} bài viết thành công!`);
-        fetchPosts(currentPage);
+        setFilters({ status: '', categoryId: '' });
+        setCurrentPage(1);
+        await fetchPosts(1, { status: '', categoryId: '' });
         handleCloseModal();
       } else {
         setError(`Thao tác thất bại: ${response.data.message || 'Lỗi không xác định'}`);
@@ -275,26 +282,28 @@ const PostManagement = () => {
 
   const handleUpdateStatus = async (postId, newStatus) => {
     if (!checkToken()) return;
-
     const post = posts.find((p) => p.id === postId);
     if (!post) {
       setError('Không tìm thấy bài viết.');
       return;
     }
 
-    const validStatuses = ['DRAFT', 'PENDING', 'PUBLISHED', 'REJECTED', 'HIDDEN'];
+    const validStatuses = ['PENDING', 'PUBLISHED', 'REJECTED', 'HIDDEN'];
     if (!validStatuses.includes(newStatus)) {
-      setError(`Trạng thái '${newStatus}' không hợp lệ. Vui lòng chọn một trong: ${validStatuses.join(', ')}.`);
+      setError(`Trạng thái '${newStatus}' không hợp lệ.`);
       return;
     }
 
-    if (!isAdmin && !canEditStatus(post, newStatus)) {
-      setError('Bạn không có quyền thay đổi trạng thái này.');
+    if (!isAdmin) {
+      setError('Bạn không có quyền thay đổi trạng thái.');
       return;
     }
 
     try {
-      const articleData = { status: newStatus };
+      const articleData = {
+        status: newStatus,
+        publishedAt: newStatus === 'PUBLISHED' ? new Date().toISOString() : null,
+      };
       const response = await axios.put(`${API_URL_ARTICLE}/update-status/${postId}`, articleData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       });
@@ -302,9 +311,6 @@ const PostManagement = () => {
       if (response.data.statusCode === 200) {
         let successMessage = '';
         switch (newStatus) {
-          case 'DRAFT':
-            successMessage = 'Bài viết đã được chuyển thành bản nháp!';
-            break;
           case 'PENDING':
             successMessage = 'Bài viết đã được gửi để duyệt!';
             break;
@@ -321,22 +327,23 @@ const PostManagement = () => {
             successMessage = `Đã cập nhật trạng thái thành ${newStatus}!`;
         }
         setSuccess(successMessage);
-        await fetchPosts(currentPage);
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === postId ? { ...p, status: newStatus, publishedAt: articleData.publishedAt } : p
+          )
+        );
       } else {
         setError(`Cập nhật trạng thái thất bại: ${response.data.message || 'Lỗi không xác định'}`);
       }
     } catch (error) {
-      const errorMessage = error.response
-        ? `Cập nhật trạng thái thất bại: ${error.response.data?.message || error.message} (Status: ${error.response.status})`
-        : `Cập nhật trạng thái thất bại: ${error.message}`;
-      setError(errorMessage);
+      setError(`Cập nhật trạng thái thất bại: ${error.response?.data?.message || error.message}`);
     }
   };
 
   const handleDeletePost = async (postId) => {
     if (!checkToken()) return;
     const post = posts.find((p) => p.id === postId);
-    if (!isAdmin && !canDelete(post)) {
+    if (!isAdmin) {
       setError('Bạn không có quyền xóa bài viết này.');
       return;
     }
@@ -347,7 +354,8 @@ const PostManagement = () => {
         });
         if (response.data.statusCode === 200) {
           setSuccess('Đã xóa bài viết.');
-          fetchPosts(currentPage);
+          setCurrentPage(1);
+          fetchPosts(1, filters);
         } else {
           setError(`Xóa bài viết thất bại: ${response.data.message || 'Lỗi không xác định'}`);
         }
@@ -357,25 +365,13 @@ const PostManagement = () => {
     }
   };
 
-  const canEditContent = (post) => isAdmin || (isEditor && ['DRAFT', 'PENDING', 'REJECTED'].includes(post?.status));
-  const canEditStatus = (post, newStatus) =>
-    isAdmin ||
-    (isEditor &&
-      ['DRAFT', 'PENDING', 'REJECTED'].includes(post?.status) &&
-      ['DRAFT', 'PENDING'].includes(newStatus) &&
-      ((post.status === 'DRAFT' && newStatus === 'PENDING') ||
-        (post.status === 'PENDING' && newStatus === 'DRAFT') ||
-        (post.status === 'REJECTED' && ['DRAFT', 'PENDING'].includes(newStatus))));
-  const canDelete = (post) => isAdmin || (isEditor && ['DRAFT', 'PENDING', 'REJECTED'].includes(post?.status));
-  const canToggleAuthor = (post) => isAdmin || (isEditor && post?.status !== 'PUBLISHED');
-
   const getStatusBadge = (status) => {
     const badges = {
-      DRAFT: <Badge bg="warning" text="dark">Bản nháp</Badge>,
       PENDING: <Badge bg="info">Chờ duyệt</Badge>,
       PUBLISHED: <Badge bg="success">Đã xuất bản</Badge>,
       REJECTED: <Badge bg="danger">Bị từ chối</Badge>,
       HIDDEN: <Badge bg="secondary">Đã ẩn</Badge>,
+      DRAFT: <Badge bg="warning">Nháp</Badge>,
     };
     return badges[status] || <Badge bg="secondary">Không xác định</Badge>;
   };
@@ -401,10 +397,20 @@ const PostManagement = () => {
       [{ align: [] }],
       ['clean'],
     ],
+    history: {
+      delay: 2000,
+      maxStack: 500,
+      userOnly: true,
+    },
+    clipboard: {
+      matchVisual: false,
+    },
   };
 
   const handlePageChange = (page) => {
-    if (page >= 1 && page <= totalPages) setCurrentPage(page);
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
   };
 
   const handleContentChange = (value) => {
@@ -430,11 +436,11 @@ const PostManagement = () => {
               <Form.Label>Trạng thái</Form.Label>
               <Form.Select name="status" value={filters.status} onChange={handleFilterChange}>
                 <option value="">Tất cả</option>
-                <option value="DRAFT">Bản nháp</option>
                 <option value="PENDING">Chờ duyệt</option>
                 <option value="PUBLISHED">Đã xuất bản</option>
                 <option value="REJECTED">Bị từ chối</option>
                 <option value="HIDDEN">Đã ẩn</option>
+                <option value="DRAFT">Nháp</option>
               </Form.Select>
             </Form.Group>
             <Form.Group style={{ width: '200px' }}>
@@ -447,7 +453,7 @@ const PostManagement = () => {
               </Form.Select>
             </Form.Group>
             <div className="d-flex align-items-end">
-              <Button variant="primary" onClick={() => fetchPosts(1)}>
+              <Button variant="primary" onClick={handleApplyFilters}>
                 Lọc
               </Button>
             </div>
@@ -497,7 +503,6 @@ const PostManagement = () => {
                         className="me-2 rounded"
                         onClick={() => handleShowModal(post)}
                         title="Chỉnh sửa"
-                        disabled={!canEditContent(post)}
                       >
                         <i className="bi bi-pencil"></i>
                       </Button>
@@ -528,7 +533,9 @@ const PostManagement = () => {
                           variant={post.status === 'PUBLISHED' ? 'secondary' : 'success'}
                           size="sm"
                           className="me-2 rounded"
-                          onClick={() => handleUpdateStatus(post.id, post.status === 'PUBLISHED' ? 'HIDDEN' : 'PUBLISHED')}
+                          onClick={() =>
+                            handleUpdateStatus(post.id, post.status === 'PUBLISHED' ? 'HIDDEN' : 'PUBLISHED')
+                          }
                           title={post.status === 'PUBLISHED' ? 'Ẩn bài viết' : 'Hiển thị lại'}
                         >
                           <i className={post.status === 'PUBLISHED' ? 'bi bi-eye-slash' : 'bi bi-eye'}></i>
@@ -540,7 +547,7 @@ const PostManagement = () => {
                         className="rounded"
                         onClick={() => handleDeletePost(post.id)}
                         title="Xóa"
-                        disabled={!canDelete(post)}
+                        disabled={!isAdmin}
                       >
                         <i className="bi bi-trash"></i>
                       </Button>
@@ -563,7 +570,10 @@ const PostManagement = () => {
                     {page + 1}
                   </Pagination.Item>
                 ))}
-                <Pagination.Next onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages} />
+                <Pagination.Next
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                />
                 <Pagination.Last onClick={() => handlePageChange(totalPages)} disabled={currentPage === totalPages} />
               </Pagination>
             </div>
@@ -594,11 +604,11 @@ const PostManagement = () => {
               <Form.Group className="mb-3">
                 <Form.Label>Thumbnail</Form.Label>
                 <Form.Control type="file" accept="image/*" onChange={handleImageChange} />
-                {previewImage && (
+                {previewImage ? (
                   <div className="mt-3">
-                    <img src={previewImage} alt="Preview" className="max-w-full max-h-48 object-contain" />
+                    <img src={previewImage} alt="Preview" className="max-w-full max-h-48 object-contain" onError={(e) => { e.target.src = 'https://via.placeholder.com/300x200?text=No+Image'; }} />
                   </div>
-                )}
+                ) : null}
               </Form.Group>
 
               <Form.Group className="mb-3">
@@ -609,42 +619,6 @@ const PostManagement = () => {
                   modules={quillModules}
                   theme="snow"
                   className="h-96 mb-12"
-                />
-              </Form.Group>
-
-              <Form.Group className="mb-3">
-                <Form.Label>Trạng thái</Form.Label>
-                <Form.Select
-                  name="status"
-                  value={formData.status}
-                  onChange={handleChange}
-                  disabled={isAdmin ? false : !canEditStatus(selectedPost, formData.status)}
-                >
-                  {isAdmin ? (
-                    <>
-                      <option value="DRAFT">Bản nháp</option>
-                      <option value="PENDING">Chờ duyệt</option>
-                      <option value="PUBLISHED">Đã xuất bản</option>
-                      <option value="REJECTED">Bị từ chối</option>
-                      <option value="HIDDEN">Đã ẩn</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="DRAFT">Bản nháp</option>
-                      <option value="PENDING">Chờ duyệt</option>
-                    </>
-                  )}
-                </Form.Select>
-              </Form.Group>
-
-              <Form.Group className="mb-3">
-                <Form.Label>Hiển thị tác giả</Form.Label>
-                <Form.Check
-                  type="checkbox"
-                  name="isShowAuthor"
-                  checked={formData.isShowAuthor}
-                  onChange={handleChange}
-                  disabled={!canToggleAuthor(selectedPost)}
                 />
               </Form.Group>
 
@@ -673,5 +647,6 @@ const PostManagement = () => {
       <Footer />
     </div>
   );
-}; 
+};
+
 export default PostManagement;
